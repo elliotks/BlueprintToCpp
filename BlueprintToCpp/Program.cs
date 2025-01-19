@@ -22,6 +22,7 @@ using CUE4Parse.UE4.Assets.Exports;
 using System.Text.RegularExpressions;
 using CUE4Parse.UE4.Assets.Exports.Component;
 using CUE4Parse.UE4.Assets.Objects;
+using static CUE4Parse.UE4.Objects.StructUtils.FInstancedPropertyBag;
 
 public class Program
 {
@@ -30,15 +31,17 @@ public class Program
         try
         {
             string pakFolderPath = args.ElementAtOrDefault(0) ?? "C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Content\\Paks";
-            string usmapPath = args.ElementAtOrDefault(1) ?? "C:\\Users\\krowe\\Downloads\\++Fortnite+Release-33.20-CL-39082670-Windows_oo.usmap";
-            string oodlePath = args.ElementAtOrDefault(2) ?? "C:\\Users\\krowe\\Downloads\\Athena\\Athena\\bin\\Debug\\net8.0\\oo2core_5_win64.dll";
+            string blueprintPath = "FortniteGame/Content/Athena/Deimos/Spawners/RiftSpawners/BP_CreativeDeimosRift.uasset"; // FortniteGame/Content/Creative/Devices/MatchmakingPortal/BP_Creative_MatchmakingPortal.uasset FortniteGame/Content/Athena/Prototype/Blueprints/MeshNetwork/BP_MeshNetworkStatusFlare.uasset FortniteGame/Content/Athena/Athena_PlayerController.uasset
+            string usmapPath = args.ElementAtOrDefault(1) ?? Path.Combine(Environment.CurrentDirectory, "++Fortnite+Release-33.20-CL-39082670-Windows_oo.usmap");
+            string oodlePath = args.ElementAtOrDefault(2) ?? Path.Combine(Environment.CurrentDirectory, "oo2core_5_win64.dll");
             string aesUrl = args.ElementAtOrDefault(3) ?? "https://fortnitecentral.genxgames.gg/api/v1/aes";
+            EGame version = EGame.GAME_UE5_LATEST;
 
-            var provider = InitializeProvider(pakFolderPath, usmapPath, oodlePath);
+            var provider = InitializeProvider(pakFolderPath, usmapPath, oodlePath, version);
             provider.ReadScriptData = true;
             await LoadAesKeysAsync(provider, aesUrl);
 
-            var package = provider.LoadPackage("FortniteGame/Content/Athena/Deimos/Spawners/RiftSpawners/BP_CreativeDeimosRift.uasset") as AbstractUePackage;// FortniteGame/Content/Creative/Devices/MatchmakingPortal/BP_Creative_MatchmakingPortal.uasset FortniteGame/Content/Athena/Prototype/Blueprints/MeshNetwork/BP_MeshNetworkStatusFlare.uasset FortniteGame/Content/Athena/Athena_PlayerController.uasset
+            var package = provider.LoadPackage(blueprintPath) as AbstractUePackage;
             var outputBuilder = new StringBuilder();
 
             string mainClass = string.Empty;
@@ -137,11 +140,11 @@ public class Program
         }
     }
 
-    static DefaultFileProvider InitializeProvider(string pakFolderPath, string usmapPath, string oodlePath)
+    static DefaultFileProvider InitializeProvider(string pakFolderPath, string usmapPath, string oodlePath, EGame version)
     {
         OodleHelper.Initialize(oodlePath);
 
-        var provider = new DefaultFileProvider(pakFolderPath, SearchOption.TopDirectoryOnly, true, new VersionContainer(EGame.GAME_UE5_LATEST))
+        var provider = new DefaultFileProvider(pakFolderPath, SearchOption.TopDirectoryOnly, true, new VersionContainer(version))
         {
             MappingsContainer = new FileUsmapTypeMappingsProvider(usmapPath)
         };
