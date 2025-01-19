@@ -38,7 +38,7 @@ public class Program
             provider.ReadScriptData = true;
             await LoadAesKeysAsync(provider, aesUrl);
 
-            var package = provider.LoadPackage("FortniteGame/Content/Creative/Devices/MatchmakingPortal/BP_Creative_MatchmakingPortal.uasset") as AbstractUePackage;// FortniteGame/Content/Athena/Prototype/Blueprints/MeshNetwork/BP_MeshNetworkStatusFlare.uasset FortniteGame/Content/Athena/Athena_PlayerController.uasset
+            var package = provider.LoadPackage("FortniteGame/Content/Athena/Deimos/Spawners/RiftSpawners/BP_CreativeDeimosRift.uasset") as AbstractUePackage;// FortniteGame/Content/Creative/Devices/MatchmakingPortal/BP_Creative_MatchmakingPortal.uasset FortniteGame/Content/Athena/Prototype/Blueprints/MeshNetwork/BP_MeshNetworkStatusFlare.uasset FortniteGame/Content/Athena/Athena_PlayerController.uasset
             var outputBuilder = new StringBuilder();
 
             string mainClass = string.Empty;
@@ -525,7 +525,13 @@ public class Program
             case EExprToken.EX_AddMulticastDelegate:
                 {
                     EX_AddMulticastDelegate op = (EX_AddMulticastDelegate)expression;
-                    EX_Context opp = (EX_Context)op.Delegate;
+                    if (op.Delegate.Token != EExprToken.EX_Context)
+                    {
+                        Console.WriteLine("Issue: operation EX_AddMulticastDelegate aren't displayed due to it being ", op.Delegate.Token);
+
+                    }
+                    else { 
+                    EX_Context opp = (EX_Context)op.Delegate; // this is incorret on some uassets
                     outputBuilder.Append("    ");
                     ProcessExpression(op.Delegate.Token, op.Delegate, outputBuilder, true);
                     outputBuilder.Append("->");
@@ -533,6 +539,7 @@ public class Program
                     outputBuilder.Append(".AddDelegate(");
                     ProcessExpression(op.DelegateToAdd.Token, op.DelegateToAdd, outputBuilder);
                     outputBuilder.Append($");\n\n");
+                    }
                     break;
                 }
             case EExprToken.EX_ClassContext:
@@ -556,7 +563,7 @@ public class Program
                     {
                         outputBuilder.Append("->");
                         ProcessExpression(op.ContextExpression.Token, op.ContextExpression, outputBuilder, true);
-                        outputBuilder.Append($"\n\n");
+                        outputBuilder.Append($";\n\n");
                     }
                     break;
                 }
