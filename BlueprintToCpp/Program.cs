@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Net;
 using System.Text;
@@ -135,11 +135,6 @@ public class Program
         {
             Console.WriteLine($"An error occurred: {ex.Message}\n{ex.StackTrace}");
         }
-    }
-
-    public static void JumpPrint(StringBuilder outputBuilder, int codeOffset)
-    {
-       
     }
 
     static DefaultFileProvider InitializeProvider(string pakFolderPath, string usmapPath, string oodlePath)
@@ -318,9 +313,6 @@ public class Program
             case EExprToken.EX_JumpIfNot:
                 {
                     EX_JumpIfNot op = (EX_JumpIfNot)expression;
-
-                    JumpPrint(outputBuilder, (int)op.CodeOffset);
-
                     outputBuilder.Append("    if (!");
                     ProcessExpression(op.BooleanExpression.Token, op.BooleanExpression, outputBuilder);
                     outputBuilder.Append(") \r\n");
@@ -571,7 +563,6 @@ public class Program
             case EExprToken.EX_Jump:
                 {
                     EX_Jump op = (EX_Jump)expression;
-                    JumpPrint(outputBuilder, (int)op.CodeOffset);
                     outputBuilder.Append($"    goto Label_{op.CodeOffset};\n\n");
                     break;
                 }
