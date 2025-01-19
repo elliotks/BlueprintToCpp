@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
+
 using CUE4Parse.Compression;
 using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Assets.Exports.Texture;
@@ -10,15 +13,18 @@ using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Versions;
-using CUE4Parse.UE4.Wwise.Enums;
+
+using OffiUtils;
+
 using Serilog;
+
 using static CUE4Parse.Compression.Compression;
 using static CUE4Parse.UE4.Objects.Core.Misc.ECompressionFlags;
 using static CUE4Parse.UE4.Objects.UObject.FPackageFileSummary;
 
 namespace CUE4Parse.UE4.Readers
 {
-    public abstract class FArchive : Stream, ICloneable
+    public abstract class FArchive : RandomAccessStream, ICloneable
     {
         public VersionContainer Versions;
         public EGame Game
@@ -38,12 +44,44 @@ namespace CUE4Parse.UE4.Readers
         }
         public abstract string Name { get; }
 
+        public override int ReadAt(long position, byte[] buffer, int offset, int count)
+        {
+            Position = position;
+            CheckReadSize(count);
+
+            return Read(buffer, offset, count);
+        }
+
+        public override Task<int> ReadAtAsync(long position, byte[] buffer, int offset, int count,
+            CancellationToken cancellationToken = default)
+        {
+            Position = position;
+            CheckReadSize(count);
+
+            return ReadAsync(buffer, offset, count, cancellationToken);
+        }
+
+        public override ValueTask<int> ReadAtAsync(long position, Memory<byte> memory, CancellationToken cancellationToken = default)
+        {
+            Position = position;
+            CheckReadSize(memory.Length);
+
+            return ReadAsync(memory, cancellationToken);
+        }
+
         public virtual byte[] ReadBytes(int length)
         {
             CheckReadSize(length);
 
             var result = new byte[length];
             Read(result, 0, length);
+            return result;
+        }
+
+        public virtual byte[] ReadBytesAt(long position, int length)
+        {
+            var result = new byte[length];
+            ReadAt(position, result, 0, length);
             return result;
         }
 
@@ -143,7 +181,7 @@ namespace CUE4Parse.UE4.Readers
             var elementSize = Read<int>();
             var elementCount = Read<int>();
             if (elementCount == 0)
-                return Array.Empty<T>();
+                return [];
 
             var pos = Position;
             T[] array = ReadArray<T>(elementCount);
@@ -186,6 +224,25 @@ namespace CUE4Parse.UE4.Readers
             }
 
             return res;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Dictionary<TKey, TValue> ReadMap<TKey, TValue>(int length, Func<TKey> keyGetter, Func<TValue> valueGetter) where TKey : notnull
+        {
+            var res = new Dictionary<TKey, TValue>(length);
+            for (var i = 0; i < length; i++)
+            {
+                res[keyGetter()] = valueGetter();
+            }
+
+            return res;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public Dictionary<TKey, TValue> ReadMap<TKey, TValue>(Func<TKey> keyGetter, Func<TValue> valueGetter) where TKey : notnull
+        {
+            var length = Read<int>();
+            return ReadMap(length, keyGetter, valueGetter);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -502,6 +559,10 @@ namespace CUE4Parse.UE4.Readers
 
         public void CheckReadSize(int length)
         {
+            if (length < 0)
+            {
+                throw new ParserException(this, "Read size is smaller than zero.");
+            }
             if (Position + length > Length)
             {
                 throw new ParserException(this, "Read size is bigger than remaining archive length.");

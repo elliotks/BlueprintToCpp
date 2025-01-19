@@ -1,9 +1,10 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Runtime.CompilerServices;
-using CUE4Parse.UE4.Exceptions;
+using System.Threading;
+using System.Threading.Tasks;
+
 using CUE4Parse.UE4.Versions;
-using System.Diagnostics;
 
 namespace CUE4Parse.UE4.Readers
 {
@@ -21,7 +22,7 @@ namespace CUE4Parse.UE4.Readers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override int Read(byte[] buffer, int offset, int count)
         {
-            int n = (int)(Length - Position);
+            int n = (int) (Length - Position);
             if (n > count) n = count;
             if (n <= 0)
                 return 0;
@@ -33,9 +34,34 @@ namespace CUE4Parse.UE4.Readers
                     buffer[offset + byteCount] = _data[Position + byteCount];
             }
             else
-                Buffer.BlockCopy(_data, (int)Position, buffer, offset, n);
+                Buffer.BlockCopy(_data, (int) Position, buffer, offset, n);
             Position += n;
+
             return n;
+        }
+
+        public override int ReadAt(long position, byte[] buffer, int offset, int count)
+        {
+            int n = (int) (Length - position);
+            if (n > count) n = count;
+            if (n <= 0)
+                return 0;
+
+            if (n <= 8)
+            {
+                int byteCount = n;
+                while (--byteCount >= 0)
+                    buffer[offset + byteCount] = _data[position + byteCount];
+            }
+            else
+                Buffer.BlockCopy(_data, (int) position, buffer, offset, n);
+
+            return n;
+        }
+
+        public override Task<int> ReadAtAsync(long position, byte[] buffer, int offset, int count, CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult(ReadAt(position, buffer, offset, count));
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

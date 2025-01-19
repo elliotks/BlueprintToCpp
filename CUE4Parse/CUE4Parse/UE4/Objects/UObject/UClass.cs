@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using CUE4Parse.UE4.Assets;
+using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Assets.Readers;
+using CUE4Parse.UE4.Objects.Engine;
 using CUE4Parse.UE4.Versions;
 using CUE4Parse.Utils;
 using Newtonsoft.Json;
@@ -57,7 +59,7 @@ namespace CUE4Parse.UE4.Objects.UObject
             ClassFlags = Ar.Read<EClassFlags>();
 
             // Variables.
-            if (Ar.Game == EGame.GAME_StarWarsJediFallenOrder || Ar.Game == EGame.GAME_StarWarsJediSurvivor) Ar.Position += 4;
+            if (Ar.Game is EGame.GAME_StarWarsJediFallenOrder or EGame.GAME_StarWarsJediSurvivor or EGame.GAME_AshesOfCreation) Ar.Position += 4;
             ClassWithin = new FPackageIndex(Ar);
             ClassConfigName = Ar.ReadFName();
 
@@ -78,9 +80,11 @@ namespace CUE4Parse.UE4.Objects.UObject
             ClassDefaultObject = new FPackageIndex(Ar);
         }
 
-        public Assets.Exports.UObject? ConstructObject()
+        public Assets.Exports.UObject? ConstructObject(EObjectFlags flags)
         {
             var type = ObjectTypeRegistry.Get(Name);
+            if (type is null && this is UBlueprintGeneratedClass && flags.HasFlag(EObjectFlags.RF_ClassDefaultObject))
+                type = typeof(Assets.Exports.UObject);
             if (type != null)
             {
                 try

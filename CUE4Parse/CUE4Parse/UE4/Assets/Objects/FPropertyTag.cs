@@ -38,12 +38,12 @@ public enum EPropertyTagFlags : byte
 [Flags]
 public enum EPropertyTagExtension : byte
 {
-    NoExtension = 0x00,
-    ReserveForFutureUse = 0x01, // Can be use to add a next group of extension
+    NoExtension					= 0x00,
+    ReserveForFutureUse			= 0x01, // Can be use to add a next group of extension
 
     ////////////////////////////////////////////////
     // First extension group
-    OverridableInformation = 0x02,
+    OverridableInformation		= 0x02,
 
     //
     // Add more extension for the first group here
@@ -85,7 +85,6 @@ public class FPropertyTag
     public bool HasPropertyGuid;
     public FGuid? PropertyGuid;
     public FPropertyTagType? Tag;
-    public int Position;
     public EPropertyTagFlags PropertyTagFlags;
 
     public EPropertyTagSerializeType SerializeType => PropertyTagFlags.HasFlag(EPropertyTagFlags.SkippedSerialize)
@@ -102,6 +101,7 @@ public class FPropertyTag
         TagData = new FPropertyTagData(info.MappingType);
         HasPropertyGuid = false;
         PropertyGuid = null;
+        PropertyTagFlags = info.ArraySize > 1 ? EPropertyTagFlags.HasArrayIndex : EPropertyTagFlags.None;
 
         var pos = Ar.Position;
         try
@@ -113,8 +113,7 @@ public class FPropertyTag
             throw new ParserException($"Failed to read FPropertyTagType {TagData?.ToString() ?? PropertyType.Text} {Name.Text}", e);
         }
 
-        Position = (int)pos;
-        Size = (int)(Ar.Position - pos);
+        Size = (int) (Ar.Position - pos);
     }
 
     public FPropertyTag(FAssetArchive Ar, bool readData)
@@ -140,7 +139,7 @@ public class FPropertyTag
             TagData = new FPropertyTagData(typeName, Name.Text);
 
             Size = Ar.Read<int>();
-            PropertyTagFlags = (EPropertyTagFlags)Ar.ReadByte();
+            PropertyTagFlags = (EPropertyTagFlags) Ar.ReadByte();
             if (PropertyTagFlags.HasFlag(EPropertyTagFlags.BoolTrue)) TagData.Bool = true;
             ArrayIndex = PropertyTagFlags.HasFlag(EPropertyTagFlags.HasArrayIndex) ? Ar.Read<int>() : 0;
             HasPropertyGuid = PropertyTagFlags.HasFlag(EPropertyTagFlags.HasPropertyGuid);
@@ -149,7 +148,6 @@ public class FPropertyTag
             if (PropertyTagFlags.HasFlag(EPropertyTagFlags.HasPropertyExtensions))
             {
                 var tagExtensions = Ar.Read<EPropertyTagExtension>();
-
                 if (tagExtensions.HasFlag(EPropertyTagExtension.OverridableInformation))
                 {
                     var OverrideOperation = Ar.Read<byte>(); // EOverriddenPropertyOperation
@@ -176,7 +174,6 @@ public class FPropertyTag
             if (Ar.Ver >= EUnrealEngineObjectUE5Version.PROPERTY_TAG_EXTENSION_AND_OVERRIDABLE_SERIALIZATION)
             {
                 var tagExtensions = Ar.Read<EPropertyTagExtension>();
-
                 if (tagExtensions.HasFlag(EPropertyTagExtension.OverridableInformation))
                 {
                     var OverrideOperation = Ar.Read<byte>(); // EOverriddenPropertyOperation

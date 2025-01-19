@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using CUE4Parse.UE4.Assets.Exports.Animation;
 using CUE4Parse.UE4.Assets.Exports.Nanite;
 using CUE4Parse.UE4.Assets.Objects;
@@ -28,7 +29,7 @@ public class USkeletalMesh : UObject
     public override void Deserialize(FAssetArchive Ar, long validPos)
     {
         base.Deserialize(Ar, validPos);
-        Materials = Array.Empty<ResolvedObject>();
+        Materials = [];
 
         bHasVertexColors = GetOrDefault<bool>(nameof(bHasVertexColors));
         NumVertexColorChannels = GetOrDefault<byte>(nameof(NumVertexColorChannels));
@@ -83,6 +84,18 @@ public class USkeletalMesh : UObject
                     }
                 }
 
+                if (Ar.Game == EGame.GAME_Stalker2)
+                {
+                    var fallbackLODModels = new FStaticLODModel[Ar.Read<int>()];
+                    for (var i = 0; i < fallbackLODModels.Length; i++)
+                    {
+                        fallbackLODModels[i] = new FStaticLODModel();
+                        fallbackLODModels[i].SerializeRenderItem(Ar, bHasVertexColors, NumVertexColorChannels);
+                    }
+
+                    LODModels = LODModels.Concat(fallbackLODModels).ToArray();
+                }
+
                 if (Ar.Game >= EGame.GAME_UE5_5)
                 {
                     var NaniteResources = new FNaniteResources(Ar);
@@ -122,6 +135,60 @@ public class USkeletalMesh : UObject
                     }
                 }
             }
+        }
+    }
+
+    public void PopulateMorphTargetVerticesData()
+    {
+        if (LODModels is null || MorphTargets.Length == 0) return;
+
+        var maxLodLevel = -1;
+        for (int i = 0; i < LODModels.Length; i++)
+        {
+            if (LODModels[i].MorphTargetVertexInfoBuffers is not null)
+            {
+                maxLodLevel = i + 1;
+            }
+        }
+
+        if (maxLodLevel == -1) return;
+
+        for (int index = 0; index < MorphTargets.Length; index++)
+        {
+            if (!MorphTargets[index].TryLoad(out UMorphTarget morphTarget)) continue;
+
+            var morphLODModels = morphTarget.MorphLODModels;
+            if (morphLODModels.Length == 0)
+            {
+                var morphTargetLODModels = new FMorphTargetLODModel[maxLodLevel];
+                for (var i = 0; i < maxLodLevel; i++)
+                {
+                    if (LODModels[i].MorphTargetVertexInfoBuffers is null || LODModels[i].MorphTargetVertexInfoBuffers!.BatchesPerMorph[index] == 0)
+                        morphTargetLODModels[i] = new FMorphTargetLODModel();
+
+                    morphTargetLODModels[i] = new FMorphTargetLODModel(LODModels[i].MorphTargetVertexInfoBuffers!, index, []);
+                }
+
+                morphTarget.MorphLODModels = morphTargetLODModels;
+                continue;
+            }
+
+            for (int j = 0; j < morphLODModels.Length; j++)
+            {
+                if (morphLODModels[j].Vertices.Length > 0 || morphLODModels[j].NumBaseMeshVerts == 0 || morphLODModels[j].SectionIndices.Length == 0) continue;
+                morphLODModels[j] = new FMorphTargetLODModel(LODModels[j].MorphTargetVertexInfoBuffers!, index, morphLODModels[j].SectionIndices);
+            }
+
+            if (morphLODModels.Length >= maxLodLevel) continue;
+
+            var newMorphLods = new FMorphTargetLODModel[maxLodLevel];
+            Array.Copy(morphLODModels, newMorphLods, morphLODModels.Length);
+            for (int j = morphLODModels.Length; j < maxLodLevel; j++)
+            {
+                newMorphLods[j] = new FMorphTargetLODModel(LODModels[j].MorphTargetVertexInfoBuffers!, index, []);
+            }
+
+            morphTarget.MorphLODModels = newMorphLods;
         }
     }
 
