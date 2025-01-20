@@ -7,26 +7,26 @@ public static class Utils
     {
         return type switch
         {
-            "FSoftObjectProperty" => "U",
-            "FStructProperty" => "F",
             "FPackageIndex" => "F",
             "FTextProperty" => "F",
+            "FActorProperty" => "A",
+            "FStructProperty" => "F",
             "FObjectProperty" => "U",
+            "FSoftObjectProperty" => "U",
             "ResolvedScriptObject" => "U",
             "UBlueprintGeneratedClass" => "A",
-            "FActorProperty" => "A",
             _ => ""
         };
     }
 
+    // These two functions were taken from
+    // https://github.com/CrystalFerrai/UeBlueprintDumper/blob/main/UeBlueprintDumper/BlueprintDumper.cs#L352
+    // nothing else in this repository is from UeBlueprintDumper
     public static string GetUnknownFieldType(FField field)
     {
         string typeName = field.GetType().Name;
         int suffixIndex = typeName.IndexOf("Property", StringComparison.Ordinal);
-        if (suffixIndex < 0)
-        {
-            return typeName;
-        }
+        if (suffixIndex < 0) return typeName;
         return typeName.Substring(1, suffixIndex - 1);
     }
 
@@ -36,27 +36,27 @@ public static class Utils
 
         return property switch
         {
-            FArrayProperty array => $"TArray<{GetPrefix(array.Inner.GetType().Name)}{GetPropertyType(array.Inner)}{(array.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || array.PropertyFlags.HasFlag(EPropertyFlags.ContainsInstancedReference) ? "*" : string.Empty)}>",
-            FByteProperty bt => bt.Enum.ResolvedObject?.Name.Text ?? "Byte",
-            FDelegateProperty dlgt => $"{dlgt.SignatureFunction?.Name ?? "Unknown"} (Delegate)",
-            FEnumProperty enm => enm.Enum?.Name.ToString() ?? "Enum",
-            FFieldPathProperty fieldPath => $"{fieldPath.PropertyClass.Text} field path",
-            FInterfaceProperty intrfc => $"{intrfc.InterfaceClass.Name} interface",
-            FMapProperty map => $"Map<{GetPropertyType(map.KeyProp)}, {GetPropertyType(map.ValueProp)}>",
-            FMulticastDelegateProperty mdlgt => $"{mdlgt.SignatureFunction?.Name ?? "Unknown"} (Multicast Delegate)",
-            FMulticastInlineDelegateProperty midlgt => $"{midlgt.SignatureFunction?.Name ?? "Unknown"} (Multicast Inline Delegate)",
+            FIntProperty => "int",
+            FBoolProperty => "bool",
+            FFloatProperty => "float",
+            FStrProperty => "FString",
             FObjectProperty objct => property switch
             {
                 FClassProperty clss => $"{clss.MetaClass?.Name ?? "Unknown"} Class",
                 FSoftClassProperty softClass => $"{softClass.MetaClass?.Name ?? "Unknown"} Class (soft)",
                 _ => objct.PropertyClass?.Name ?? "Unknown"
             },
+            FEnumProperty enm => enm.Enum?.Name.ToString() ?? "Enum",
             FSetProperty set => $"Set<{GetPropertyType(set.ElementProp)}>",
+            FByteProperty bt => bt.Enum.ResolvedObject?.Name.Text ?? "Byte",
+            FInterfaceProperty intrfc => $"{intrfc.InterfaceClass.Name} interface",
             FStructProperty strct => strct.Struct.ResolvedObject?.Name.Text ?? "Struct",
-            FBoolProperty => "bool",
-            FIntProperty => "int",
-            FFloatProperty => "float",
-            FStrProperty => "FString",
+            FFieldPathProperty fieldPath => $"{fieldPath.PropertyClass.Text} field path",
+            FDelegateProperty dlgt => $"{dlgt.SignatureFunction?.Name ?? "Unknown"} (Delegate)",
+            FMapProperty map => $"Map<{GetPropertyType(map.KeyProp)}, {GetPropertyType(map.ValueProp)}>",
+            FMulticastDelegateProperty mdlgt => $"{mdlgt.SignatureFunction?.Name ?? "Unknown"} (Multicast Delegate)",
+            FMulticastInlineDelegateProperty midlgt => $"{midlgt.SignatureFunction?.Name ?? "Unknown"} (Multicast Inline Delegate)",
+            FArrayProperty array => $"TArray<{GetPrefix(array.Inner.GetType().Name)}{GetPropertyType(array.Inner)}{(array.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || array.PropertyFlags.HasFlag(EPropertyFlags.ContainsInstancedReference) ? "*" : string.Empty)}>",
             _ => GetUnknownFieldType(property)
         };
     }

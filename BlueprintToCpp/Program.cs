@@ -31,7 +31,7 @@ public class Program
         try
         {
             string pakFolderPath = args.ElementAtOrDefault(0) ?? "C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Content\\Paks";
-            string blueprintPath = "FortniteGame/Content/Athena/Deimos/Spawners/RiftSpawners/BP_CreativeDeimosRift.uasset"; // FortniteGame/Content/Creative/Devices/MatchmakingPortal/BP_Creative_MatchmakingPortal.uasset FortniteGame/Content/Athena/Prototype/Blueprints/MeshNetwork/BP_MeshNetworkStatusFlare.uasset FortniteGame/Content/Athena/Athena_PlayerController.uasset
+            string blueprintPath = "FortniteGame/Plugins/GameFeatures/Creative/Devices/CRD_LevelInstance/Content/BP_LevelInstanceDevice.uasset"; // FortniteGame/Content/Creative/Devices/MatchmakingPortal/BP_Creative_MatchmakingPortal.uasset FortniteGame/Plugins/GameFeatures/SpecialEvent/Armadillo/Content/Gameplay/BP_Armadillo_SpecialEventScript.uasset FortniteGame/Content/Athena/Prototype/Blueprints/MeshNetwork/BP_MeshNetworkStatusFlare.uasset FortniteGame/Content/Athena/Athena_PlayerController.uasset
             string usmapPath = args.ElementAtOrDefault(1) ?? Path.Combine(Environment.CurrentDirectory, "++Fortnite+Release-33.20-CL-39082670-Windows_oo.usmap");
             string oodlePath = args.ElementAtOrDefault(2) ?? Path.Combine(Environment.CurrentDirectory, "oo2core_5_win64.dll");
             string aesUrl = args.ElementAtOrDefault(3) ?? "https://fortnitecentral.genxgames.gg/api/v1/aes";
@@ -120,9 +120,16 @@ public class Program
                     argsList = argsList.TrimEnd(',', ' ');
 
                     outputBuilder.AppendLine($"\n{returnFunc} {function.Name.Replace(" ", "")}({argsList})\n{{");
-                    foreach (KismetExpression property in function.ScriptBytecode)
+                    if (function?.ScriptBytecode != null)
                     {
-                        ProcessExpression(property.Token, property, outputBuilder);
+                        foreach (KismetExpression property in function.ScriptBytecode)
+                        {
+                            ProcessExpression(property.Token, property, outputBuilder);
+                        }
+                    } else
+                    {
+                        outputBuilder.Append("\n // This function does not have Bytecode \n\n");
+                        outputBuilder.Append("}\n");
                     }
                 }
 
@@ -231,7 +238,7 @@ public class Program
 
                     for (int i = 0; i < opp.Length; i++)
                     {
-                        if (opp.Length > 5) outputBuilder.Append("\n");
+                        if (opp.Length > 5) outputBuilder.Append("\n    ");
                         ProcessExpression(opp[i].Token, opp[i], outputBuilder, true);
                         if (i < opp.Length - 1)
                         {
@@ -255,7 +262,7 @@ public class Program
                     outputBuilder.Append($"{Utils.GetPrefix(op.StackNode.ResolvedObject.Outer.GetType().Name)}{op.StackNode.ResolvedObject.Outer.Name.ToString().Replace(" ", "")}::{op.StackNode.Name}(");
                     for (int i = 0; i < opp.Length; i++)
                     {
-                        if (opp.Length > 5) outputBuilder.Append("\n");
+                        if (opp.Length > 5) outputBuilder.Append("\n    ");
                         ProcessExpression(opp[i].Token, opp[i], outputBuilder, false);
                         if (i < opp.Length - 1)
                         {
@@ -288,7 +295,7 @@ public class Program
                     }
                     for (int i = 0; i < opp.Length; i++)
                     {
-                        if (opp.Length > 5) outputBuilder.Append("\n");
+                        if (opp.Length > 5) outputBuilder.Append("\n    ");
 
                         ProcessExpression(opp[i].Token, opp[i], outputBuilder, true);
                         if (i < opp.Length - 1)
@@ -313,17 +320,6 @@ public class Program
                     outputBuilder.AppendLine($"    goto {string.Join('.', ((EX_VariableBase)op.CodeOffsetExpression).Variable.New.Path.Select(n => n.Text))};\n");
                     break;
                 }
-            case EExprToken.EX_JumpIfNot:
-                {
-                    EX_JumpIfNot op = (EX_JumpIfNot)expression;
-                    outputBuilder.Append("    if (!");
-                    ProcessExpression(op.BooleanExpression.Token, op.BooleanExpression, outputBuilder);
-                    outputBuilder.Append(") \r\n");
-                    outputBuilder.Append("        goto Label_");
-                    outputBuilder.Append(op.CodeOffset);
-                    outputBuilder.Append(";\n\n");
-                    break;
-                }
             case EExprToken.EX_PopExecutionFlowIfNot:
                 {
                     EX_PopExecutionFlowIfNot op = (EX_PopExecutionFlowIfNot)expression;
@@ -335,7 +331,7 @@ public class Program
                 }
             case EExprToken.EX_Cast:
                 {
-                    EX_Cast op = (EX_Cast)expression;//CST_ObjectToInterface
+                    EX_Cast op = (EX_Cast)expression;// support CST_ObjectToInterface when i have a example of how it works
 
                     if (ECastToken.CST_ObjectToBool == op.ConversionType|| ECastToken.CST_InterfaceToBool == op.ConversionType)
                     {
@@ -358,50 +354,16 @@ public class Program
                     ProcessExpression(op.InterfaceValue.Token, op.InterfaceValue, outputBuilder);
                     break;
                 }
-            case EExprToken.EX_NameConst:
-                {
-                    EX_NameConst op = (EX_NameConst)expression;
-                    outputBuilder.Append($"\"{op.Value}\"");
-                    break;
-                }
-            case EExprToken.EX_RotationConst:
-                {
-                    EX_RotationConst op = (EX_RotationConst)expression;
-                    FRotator value = op.Value;
-                    outputBuilder.Append($"FRotator({value.Pitch}, {value.Yaw}, {value.Roll})");
-                    break;
-                }
-            case EExprToken.EX_VectorConst:
-                {
-                    EX_VectorConst op = (EX_VectorConst)expression;
-                    FVector value = op.Value;
-                    outputBuilder.Append($"FVector({value.X}, {value.Y}, {value.Z})");
-                    break;
-                }
-            case EExprToken.EX_Vector3fConst:
-                {
-                    EX_Vector3fConst op = (EX_Vector3fConst)expression;
-                    FVector value = op.Value;
-                    outputBuilder.Append($"FVector3f({value.X}, {value.Y}, {value.Z})");
-                    break;
-                }
-            case EExprToken.EX_StructMemberContext:
-                {
-                    EX_StructMemberContext op = (EX_StructMemberContext)expression;
-                    ProcessExpression(op.StructExpression.Token, op.StructExpression, outputBuilder);
-                    outputBuilder.Append(".");
-                    outputBuilder.Append(string.Join('.', op.Property.New.Path.Select(n => n.Text)));
-                    break;
-                }
             case EExprToken.EX_ArrayConst:
                 {
                     EX_ArrayConst op = (EX_ArrayConst)expression;
-                    outputBuilder.Append("TArray {");
+                    outputBuilder.Append("TArray {"); // if TArray is a var it fails
                     foreach (KismetExpression element in op.Elements)
                     {
                         outputBuilder.Append(" ");
                         ProcessExpression(element.Token, element, outputBuilder);
                     }
+                    if (op.Elements.Length < 0) outputBuilder.Append("  ");
                     outputBuilder.Append("}");
                     break;
                 }
@@ -424,7 +386,7 @@ public class Program
                     EX_SwitchValue op = (EX_SwitchValue)expression;
                     ProcessExpression(op.IndexTerm.Token, op.IndexTerm, outputBuilder);
                     outputBuilder.Append(" ? ");
-                    for (int caseIndex = 0; caseIndex < op.Cases.Length; ++caseIndex)
+                    for (int caseIndex = 0; caseIndex < op.Cases.Length; ++caseIndex) // this seems to be flipped and it starts with :
                     {
                         if (caseIndex != op.Cases.Length - 1 || caseIndex != 0) outputBuilder.Append(" : ");
                         ProcessExpression(op.Cases[caseIndex].CaseTerm.Token, op.Cases[caseIndex].CaseTerm, outputBuilder);
@@ -434,8 +396,9 @@ public class Program
                 }
             case EExprToken.EX_ArrayGetByRef:
                 {
-                    EX_ArrayGetByRef op = (EX_ArrayGetByRef)expression;
+                    EX_ArrayGetByRef op = (EX_ArrayGetByRef)expression; // unfinished
                     ProcessExpression(op.ArrayVariable.Token, op.ArrayVariable, outputBuilder);
+                    outputBuilder.Append(" Send Uasset to krowe ");
                     ProcessExpression(op.ArrayIndex.Token, op.ArrayIndex, outputBuilder);
                     break;
                 }
@@ -466,26 +429,10 @@ public class Program
                     outputBuilder.Append($")");
                     break;
                 }
-            case EExprToken.EX_LocalVariable:
-            case EExprToken.EX_DefaultVariable:
-            case EExprToken.EX_InstanceVariable:
-            case EExprToken.EX_LocalOutVariable:
-            case EExprToken.EX_ClassSparseDataVariable:
-                {
-                    EX_VariableBase op = (EX_VariableBase)expression;
-                    outputBuilder.Append(string.Join('.', op.Variable.New.Path.Select(n => n.Text)).Replace(" ",""));
-                    break;
-                }
-            case EExprToken.EX_IntConst:
-                {
-                    EX_IntConst op = (EX_IntConst)expression;
-                    outputBuilder.Append(op.Value.ToString());
-                    break;
-                }
             case EExprToken.EX_ObjectConst:
                 {
                     EX_ObjectConst op = (EX_ObjectConst)expression;
-                    outputBuilder.Append("LoadObject<");
+                    outputBuilder.Append("FindObject<");
                     string classString = op?.Value?.ResolvedObject?.Class?.ToString()?.Replace("'", "");
                     if (classString?.Contains(".") == true)
                     {
@@ -493,25 +440,18 @@ public class Program
                     }
                     else
                     {
-                        outputBuilder.Append("U" + classString); // renove gardicded
+                        outputBuilder.Append("U" + classString); // renove hardcoded
                     }
                     outputBuilder.Append(">(\"");
                     outputBuilder.Append(
-                        op.Value.ResolvedObject.Outer
+                        op?.Value?.ResolvedObject?.Outer
                             .ToString()
                             .Replace("'", "")
-                            .Replace(op.Value.ResolvedObject.Class.ToString().Replace("'", ""), "") +
+                            .Replace(op?.Value?.ResolvedObject?.Class.ToString().Replace("'", ""), "") +
                         "." +
                         op.Value.Name
                     );
                     outputBuilder.Append("\")");
-                    break;
-                }
-            case EExprToken.EX_ByteConst:
-            case EExprToken.EX_IntConstByte:
-                {
-                    KismetExpression<byte> op = (KismetExpression<byte>)expression;
-                    outputBuilder.Append("0x" + op.Value.ToString("X"));
                     break;
                 }
             case EExprToken.EX_BindDelegate:
@@ -531,7 +471,6 @@ public class Program
                     if (op.Delegate.Token != EExprToken.EX_Context)
                     {
                         Console.WriteLine("Issue: operation EX_AddMulticastDelegate aren't displayed due to it being ", op.Delegate.Token);
-
                     }
                     else { 
                     EX_Context opp = (EX_Context)op.Delegate; // this is incorret on some uassets
@@ -550,11 +489,8 @@ public class Program
                 {
                     EX_Context op = (EX_Context)expression;
                     ProcessExpression(op.ObjectExpression.Token, op.ObjectExpression, outputBuilder, true);
-                    //if (!isParameter)
-                    //{
-                        outputBuilder.Append("->");
-                        ProcessExpression(op.ContextExpression.Token, op.ContextExpression, outputBuilder, true);
-                    //}
+                    outputBuilder.Append("->");
+                    ProcessExpression(op.ContextExpression.Token, op.ContextExpression, outputBuilder, true);
                     break;
                 }
             case EExprToken.EX_Context_FailSilent:
@@ -568,12 +504,6 @@ public class Program
                         ProcessExpression(op.ContextExpression.Token, op.ContextExpression, outputBuilder, true);
                         outputBuilder.Append($";\n\n");
                     }
-                    break;
-                }
-            case EExprToken.EX_Jump:
-                {
-                    EX_Jump op = (EX_Jump)expression;
-                    outputBuilder.Append($"    goto Label_{op.CodeOffset};\n\n");
                     break;
                 }
             case EExprToken.EX_Let:
@@ -616,7 +546,101 @@ public class Program
                     }
                     break;
                 }
-            // Static
+            case EExprToken.EX_JumpIfNot:
+                {
+                    EX_JumpIfNot op = (EX_JumpIfNot)expression;
+                    outputBuilder.Append("    if (!");
+                    ProcessExpression(op.BooleanExpression.Token, op.BooleanExpression, outputBuilder);
+                    outputBuilder.Append(") \r\n");
+                    outputBuilder.Append("        goto Label_");
+                    outputBuilder.Append(op.CodeOffset);
+                    outputBuilder.Append(";\n\n");
+                    break;
+                }
+            case EExprToken.EX_Jump:
+                {
+                    EX_Jump op = (EX_Jump)expression;
+                    outputBuilder.Append($"    goto Label_{op.CodeOffset};\n\n");
+                    break;
+                }
+            // Static expressions
+            case EExprToken.EX_StructMemberContext:
+                {
+                    EX_StructMemberContext op = (EX_StructMemberContext)expression;
+                    ProcessExpression(op.StructExpression.Token, op.StructExpression, outputBuilder);
+                    outputBuilder.Append(".");
+                    outputBuilder.Append(string.Join('.', op.Property.New.Path.Select(n => n.Text)));
+                    break;
+                }
+            case EExprToken.EX_LocalVariable:
+            case EExprToken.EX_DefaultVariable:
+            case EExprToken.EX_InstanceVariable:
+            case EExprToken.EX_LocalOutVariable:
+            case EExprToken.EX_ClassSparseDataVariable:
+                {
+                    EX_VariableBase op = (EX_VariableBase)expression;
+                    outputBuilder.Append(string.Join('.', op.Variable.New.Path.Select(n => n.Text)).Replace(" ", ""));
+                    break;
+                }
+            case EExprToken.EX_ByteConst:
+            case EExprToken.EX_IntConstByte:
+                {
+                    KismetExpression<byte> op = (KismetExpression<byte>)expression;
+                    outputBuilder.Append($"0x{op.Value.ToString("X")}");
+                    break;
+                }
+            case EExprToken.EX_Return:
+                {
+                    EX_Return op = (EX_Return)expression;
+                    bool tocheck = op.ReturnExpression.Token == EExprToken.EX_Nothing;
+                    outputBuilder.Append($"\n    return");
+                    if (!tocheck) outputBuilder.Append(" ");
+                    ProcessExpression(op.ReturnExpression.Token, op.ReturnExpression, outputBuilder, true);
+                    outputBuilder.AppendLine(";\n\n");
+                    break;
+                }
+            case EExprToken.EX_DoubleConst:
+                {
+                    var value = ((EX_DoubleConst)expression).Value;
+                    outputBuilder.Append(value == (int)value ? (int)value : value.ToString("0.0###"));
+                    break;
+                }
+            case EExprToken.EX_NameConst:
+                {
+                    EX_NameConst op = (EX_NameConst)expression;
+                    outputBuilder.Append($"\"{op.Value}\"");
+                    break;
+                }
+            case EExprToken.EX_RotationConst:
+                {
+                    EX_RotationConst op = (EX_RotationConst)expression;
+                    FRotator value = op.Value;
+                    outputBuilder.Append($"FRotator({value.Pitch}, {value.Yaw}, {value.Roll})");
+                    break;
+                }
+            case EExprToken.EX_VectorConst:
+                {
+                    EX_VectorConst op = (EX_VectorConst)expression;
+                    FVector value = op.Value;
+                    outputBuilder.Append($"FVector({value.X}, {value.Y}, {value.Z})");
+                    break;
+                }
+            case EExprToken.EX_Vector3fConst:
+                {
+                    EX_Vector3fConst op = (EX_Vector3fConst)expression;
+                    FVector value = op.Value;
+                    outputBuilder.Append($"FVector3f({value.X}, {value.Y}, {value.Z})");
+                    break;
+                }
+            case EExprToken.EX_IntConst:
+                {
+                    EX_IntConst op = (EX_IntConst)expression;
+                    outputBuilder.Append(op.Value.ToString());
+                    break;
+                }
+            case EExprToken.EX_StringConst:
+                outputBuilder.Append($"\"{((EX_StringConst)expression).Value}\"");
+                break;
             case EExprToken.EX_Int64Const:
                 outputBuilder.Append(((EX_Int64Const)expression).Value.ToString());
                 break;
@@ -632,28 +656,9 @@ public class Program
             case EExprToken.EX_TextConst:
                 outputBuilder.Append(((EX_TextConst)expression).Value.ToString());
                 break;
-            case EExprToken.EX_DoubleConst:
-                {
-                    var value = ((EX_DoubleConst)expression).Value;
-                    outputBuilder.Append(value == (int)value ? (int)value : value.ToString("0.0###"));
-                    break;
-                }
-            case EExprToken.EX_StringConst:
-                outputBuilder.Append($"\"{((EX_StringConst)expression).Value}\"");
-                break;
             case EExprToken.EX_UnicodeStringConst:
                 outputBuilder.Append(((EX_UnicodeStringConst)expression).Value);
                 break;
-            case EExprToken.EX_Return:
-                {
-                    EX_Return op = (EX_Return)expression;
-                    bool tocheck = op.ReturnExpression.Token == EExprToken.EX_Nothing;
-                    outputBuilder.Append($"\n    return");
-                    if (!tocheck) outputBuilder.Append(" ");
-                    ProcessExpression(op.ReturnExpression.Token, op.ReturnExpression, outputBuilder, true);
-                    outputBuilder.AppendLine(";\n\n");
-                    break;
-                }
             case EExprToken.EX_EndOfScript:
             case EExprToken.EX_EndParmValue:
                 outputBuilder.AppendLine("}");
