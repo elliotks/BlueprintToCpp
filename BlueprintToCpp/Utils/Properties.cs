@@ -44,14 +44,9 @@ public static class Utils
     {
         return type switch
         {
-            "FPackageIndex" => "F",
-            "FTextProperty" => "F",
-            "FActorProperty" => "A",
-            "FStructProperty" => "F",
-            "FObjectProperty" => "U",
-            "FSoftObjectProperty" => "U",
-            "ResolvedScriptObject" => "U",
-            "UBlueprintGeneratedClass" => "A",
+            "FNameProperty" or "FPackageIndex" or "FTextProperty" or "FStructProperty" => "F",
+            "UBlueprintGeneratedClass" or "FActorProperty" => "A",
+            "ResolvedScriptObject" or "FSoftObjectProperty" or "FObjectProperty" => "U",
             _ => ""
         };
     }
