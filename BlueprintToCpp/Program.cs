@@ -23,6 +23,8 @@ using System.Text.RegularExpressions;
 using CUE4Parse.UE4.Assets.Exports.Component;
 using CUE4Parse.UE4.Assets.Objects;
 using static CUE4Parse.UE4.Objects.StructUtils.FInstancedPropertyBag;
+using CUE4Parse.UE4.Assets.Objects.Properties;
+
 
 public class Program
 {
@@ -30,16 +32,45 @@ public class Program
     {
         try
         {
-            string pakFolderPath = args.ElementAtOrDefault(0) ?? "C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Content\\Paks";
-            string blueprintPath = "FortniteGame/Plugins/GameFeatures/Creative/Devices/CRD_LevelInstance/Content/BP_LevelInstanceDevice.uasset"; // FortniteGame/Content/Creative/Devices/MatchmakingPortal/BP_Creative_MatchmakingPortal.uasset FortniteGame/Plugins/GameFeatures/SpecialEvent/Armadillo/Content/Gameplay/BP_Armadillo_SpecialEventScript.uasset FortniteGame/Content/Athena/Prototype/Blueprints/MeshNetwork/BP_MeshNetworkStatusFlare.uasset FortniteGame/Content/Athena/Athena_PlayerController.uasset
-            string usmapPath = args.ElementAtOrDefault(1) ?? Path.Combine(Environment.CurrentDirectory, "++Fortnite+Release-33.20-CL-39082670-Windows_oo.usmap");
-            string oodlePath = args.ElementAtOrDefault(2) ?? Path.Combine(Environment.CurrentDirectory, "oo2core_5_win64.dll");
-            string aesUrl = args.ElementAtOrDefault(3) ?? "https://fortnitecentral.genxgames.gg/api/v1/aes";
-            EGame version = EGame.GAME_UE5_LATEST;
+            var config = Utils.LoadConfig("config.json");
+
+            string pakFolderPath = config.PakFolderPath;
+            if (string.IsNullOrEmpty(pakFolderPath) || pakFolderPath.Length < 1) {
+                Console.WriteLine("Please provide a pak folder path in the config.json file.");
+                return;
+            }
+
+            string blueprintPath = config.BlueprintPath;
+            if (string.IsNullOrEmpty(blueprintPath) || blueprintPath.Length < 1)
+            {
+                Console.WriteLine("Please provide a blueprint path in the config.json file.");
+                return;
+            }
+
+            string usmapPath = config.UsmapPath;
+            if (string.IsNullOrEmpty(usmapPath) || usmapPath.Length < 1)
+            {
+                Console.WriteLine("Please provide a usmap path in the config.json file.");
+                return;
+            }
+
+            string oodlePath = config.OodlePath;
+            if (string.IsNullOrEmpty(oodlePath) || oodlePath.Length < 1)
+            {
+                Console.WriteLine("Please provide a oodle path in the config.json file.");
+                return;
+            }
+
+            EGame version = config.Version;
+            if (string.IsNullOrEmpty(oodlePath) || oodlePath.Length < 1)
+            {
+                Console.WriteLine("Please provide a UE version in the config.json file.");
+                return;
+            }
 
             var provider = InitializeProvider(pakFolderPath, usmapPath, oodlePath, version);
             provider.ReadScriptData = true;
-            await LoadAesKeysAsync(provider, aesUrl);
+            await LoadAesKeysAsync(provider, "https://fortnitecentral.genxgames.gg/api/v1/aes"); // allow users to change the aes url?
 
             var package = provider.LoadPackage(blueprintPath) as AbstractUePackage;
             var outputBuilder = new StringBuilder();
@@ -55,7 +86,7 @@ public class Program
 
                 foreach (FProperty property in blueprintGeneratedClass.ChildProperties)
                 {
-                    outputBuilder.AppendLine($"    {Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) ? "*" : string.Empty)} {property.Name} = {property.Name}placenolder;");
+                    outputBuilder.AppendLine($"    {Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || Utils.GetPropertyProperty(property) ? "*" : string.Empty)} {property.Name} = {property.Name}placenolder;");
                 }
 
                 foreach (var export in package.ExportsLazy)
@@ -70,11 +101,25 @@ public class Program
                             {
                                 if (outputBuilder.ToString().Contains($"{key.Name}placenolder"))
                                 {
-                                    outputBuilder.Replace($"{key.Name}placenolder", key.Tag.GenericValue.ToString());
+                                    if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "ObjectProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty")
+                                    {
+                                        outputBuilder.Replace($"{key.Name}placenolder", $"\"{key.Tag.GenericValue.ToString()}\"");
+                                    }
+                                    else
+                                    {
+                                        outputBuilder.Replace($"{key.Name}placenolder", key.Tag.GenericValue.ToString());
+                                    }
+
                                 }
                                 else
-                                {
-                                    outputBuilder.AppendLine($"    {Utils.GetPrefix(key.GetType().Name)} {key.Name} = {key.Tag.GenericValue};");
+                                { // findout how to setup types for propertytag and this is a mess
+                                    if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "StructProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty")
+                                    {
+                                        outputBuilder.AppendLine($"    {Utils.GetPrefix(key.GetType().Name)} {key.Name} = \"{key.Tag.GenericValue}\";");
+                                    } else
+                                    {
+                                        outputBuilder.AppendLine($"    {Utils.GetPrefix(key.GetType().Name)} {key.Name} = {key.Tag.GenericValue};"); 
+                                    }
                                 }
                             }
                         }
@@ -111,7 +156,7 @@ public class Program
                         else if (!(property.Name.ToString().EndsWith("_ReturnValue") ||
                                   property.Name.ToString().StartsWith("CallFunc_") ||
                                   property.Name.ToString().StartsWith("K2Node_") ||
-                                  property.Name.ToString().StartsWith("Temp_")) ||
+                                  property.Name.ToString().StartsWith("Temp_")) || // removes useless args
                                   property.PropertyFlags.HasFlag(EPropertyFlags.Edit))
                         {
                             argsList += $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || Utils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}{(property.PropertyFlags.HasFlag(EPropertyFlags.OutParm) ? "&" : string.Empty)} {property.Name}, ";
@@ -139,7 +184,12 @@ public class Program
             int targetIndex = outputBuilder.ToString().IndexOf("placenolder");
             string pattern = $@"\w+placenolder";
             string updatedOutput = Regex.Replace(outputBuilder.ToString(), pattern, "null");
-            Console.WriteLine(updatedOutput);
+            //Console.WriteLine(updatedOutput);
+            string exeDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            string outputFilePath = Path.Combine(exeDirectory, "Output.cpp");
+            File.WriteAllText(outputFilePath, updatedOutput);
+
+            Console.WriteLine($"Output written to: {outputFilePath}");
         }
         catch (Exception ex)
         {
@@ -162,7 +212,7 @@ public class Program
 
     static async Task LoadAesKeysAsync(DefaultFileProvider provider, string aesUrl)
     {
-        string cacheFilePath = "aes_keys_cache.json";
+        string cacheFilePath = "aes.json";
 
         if (File.Exists(cacheFilePath))
         {
@@ -685,8 +735,9 @@ public class Program
             case EExprToken.EX_Nothing:
             case EExprToken.EX_PopExecutionFlow:
             case EExprToken.EX_PushExecutionFlow:
-            case EExprToken.EX_CallMulticastDelegate:
+            case EExprToken.EX_CallMulticastDelegate: // some here are unsupported
             case EExprToken.EX_RemoveMulticastDelegate:
+            case EExprToken.EX_ClearMulticastDelegate:
                 break;
             default:
                 outputBuilder.Append($"{token}");
