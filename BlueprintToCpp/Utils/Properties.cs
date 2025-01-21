@@ -89,7 +89,7 @@ public static class Utils
             FStructProperty strct => strct.Struct.ResolvedObject?.Name.Text ?? "Struct",
             FFieldPathProperty fieldPath => $"{fieldPath.PropertyClass.Text} field path",
             FDelegateProperty dlgt => $"{dlgt.SignatureFunction?.Name ?? "UNKNOWN"} (Delegate)",
-            FMapProperty map => $"Map<{GetPropertyType(map.KeyProp)}, {GetPropertyType(map.ValueProp)}>",
+            FMapProperty map => $"TMap<{GetPropertyType(map.KeyProp)}, {GetPropertyType(map.ValueProp)}>",
             FMulticastDelegateProperty mdlgt => $"{mdlgt.SignatureFunction?.Name ?? "UNKNOWN"} (Multicast Delegate)",
             FMulticastInlineDelegateProperty midlgt => $"{midlgt.SignatureFunction?.Name ?? "UNKNOWN"} (Multicast Inline Delegate)",
             //FVector vector => $"{{{vector.X}, {vector.Y}, {vector.Z}}}",
