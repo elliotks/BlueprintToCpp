@@ -1,8 +1,5 @@
-using System;
-using System.IO;
 using System.Net;
 using System.Text;
-using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using CUE4Parse.Encryption.Aes;
 using CUE4Parse.FileProvider;
@@ -15,23 +12,23 @@ using CUE4Parse.UE4.Kismet;
 using CUE4Parse.UE4.Assets;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Objects.Core.Math;
-using System.Linq.Expressions;
-using System.Collections.Generic;
-using Newtonsoft.Json;
 using CUE4Parse.UE4.Assets.Exports;
 using System.Text.RegularExpressions;
-using CUE4Parse.UE4.Assets.Exports.Component;
-using CUE4Parse.UE4.Assets.Objects;
-using static CUE4Parse.UE4.Objects.StructUtils.FInstancedPropertyBag;
-using CUE4Parse.UE4.Assets.Objects.Properties;
+using Serilog;
+using Serilog.Sinks.SystemConsole.Themes;
 
+namespace Main;
 
-public class Program
+public static class Program
 {
-    static async Task Main(string[] args)
+    public static async Task Main(string[] args)
     {
         try
         {
+            Log.Logger = new LoggerConfiguration()
+                .WriteTo.Console(theme: AnsiConsoleTheme.Literate)
+                .CreateLogger();
+
             var config = Utils.LoadConfig("config.json");
 
             string pakFolderPath = config.PakFolderPath;
@@ -131,7 +128,7 @@ public class Program
                                     {
                                         //Console.WriteLine(key.Name);
                                         //Console.WriteLine(key.Tag.GetType().Name);
-                                        outputBuilder.AppendLine($"    {Utils.GetPrefix(key.GetType().Name)} {key.Name} = {key.Tag.GenericValue};"); 
+                                        outputBuilder.AppendLine($"    {Utils.GetPrefix(key.GetType().Name)} {key.Name} = {key.Tag.GenericValue};");
                                     }
                                 }
                             }
@@ -649,7 +646,7 @@ public class Program
                     {
                         Console.WriteLine("Issue: operation EX_AddMulticastDelegate aren't displayed due to it being ", op.Delegate.Token.ToString());
                     }
-                    else { 
+                    else {
                     EX_Context opp = (EX_Context)op.Delegate; // this is incorret on some uassets
                     outputBuilder.Append("    ");
                     ProcessExpression(op.Delegate.Token, op.Delegate, outputBuilder, true);
