@@ -86,7 +86,7 @@ public class Program
 
                 foreach (FProperty property in blueprintGeneratedClass.ChildProperties)
                 {
-                    outputBuilder.AppendLine($"    {Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || Utils.GetPropertyProperty(property) ? "*" : string.Empty)} {property.Name} = {property.Name}placenolder;");
+                    outputBuilder.AppendLine($"    {Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || Utils.GetPropertyProperty(property) ? "*" : string.Empty)} {property.Name} = {property.Name}placenolder;");
                 }
 
                 foreach (var export in package.ExportsLazy)
@@ -466,27 +466,73 @@ public class Program
             case EExprToken.EX_SwitchValue:
                 {
                     EX_SwitchValue op = (EX_SwitchValue) expression;
-                    ProcessExpression(op.IndexTerm.Token, op.IndexTerm, outputBuilder);
-                    outputBuilder.Append(" ? ");
 
-                    bool isFirst = true;
-                    foreach (var caseItem in op.Cases.Where(c => c.CaseIndexValueTerm.Token == EExprToken.EX_True))
+                    bool useTernary = op.Cases.Length <= 2
+                        && op.Cases.All(c => c.CaseIndexValueTerm.Token == EExprToken.EX_True || c.CaseIndexValueTerm.Token == EExprToken.EX_False);
+
+                    if (useTernary)
                     {
-                        if (!isFirst)
-                            outputBuilder.Append(" : ");
+                        ProcessExpression(op.IndexTerm.Token, op.IndexTerm, outputBuilder);
+                        outputBuilder.Append(" ? ");
 
-                        ProcessExpression(caseItem.CaseTerm.Token, caseItem.CaseTerm, outputBuilder);
-                        isFirst = false;
+                        bool isFirst = true;
+                        foreach (var caseItem in op.Cases.Where(c => c.CaseIndexValueTerm.Token == EExprToken.EX_True))
+                        {
+                            if (!isFirst)
+                                outputBuilder.Append(" : ");
+
+                            ProcessExpression(caseItem.CaseTerm.Token, caseItem.CaseTerm, outputBuilder);
+                            isFirst = false;
+                        }
+
+                        foreach (var caseItem in op.Cases.Where(c => c.CaseIndexValueTerm.Token == EExprToken.EX_False))
+                        {
+                            if (!isFirst)
+                                outputBuilder.Append(" : ");
+
+                            ProcessExpression(caseItem.CaseTerm.Token, caseItem.CaseTerm, outputBuilder);
+                        }
                     }
-
-                    foreach (var caseItem in op.Cases.Where(c => c.CaseIndexValueTerm.Token == EExprToken.EX_False))
+                    else
                     {
-                        if (!isFirst)
-                            outputBuilder.Append(" : ");
+                        outputBuilder.Append("switch (");
+                        ProcessExpression(op.IndexTerm.Token, op.IndexTerm, outputBuilder);
+                        outputBuilder.Append(")\n");
+                        outputBuilder.Append("{\n");
 
-                        ProcessExpression(caseItem.CaseTerm.Token, caseItem.CaseTerm, outputBuilder);
+                        foreach (var caseItem in op.Cases)
+                        {
+                            if (caseItem.CaseIndexValueTerm.Token == EExprToken.EX_IntConst)
+                            {
+                                int caseValue = ((EX_IntConst) caseItem.CaseIndexValueTerm).Value;
+                                outputBuilder.Append($"    case {caseValue}:\n");
+                            }
+                            else
+                            {
+                                outputBuilder.Append("    case ");
+                                ProcessExpression(caseItem.CaseIndexValueTerm.Token, caseItem.CaseIndexValueTerm, outputBuilder);
+                                outputBuilder.Append(":\n");
+                            }
+
+                            outputBuilder.Append("    {\n");
+                            outputBuilder.Append("        ");
+                            ProcessExpression(caseItem.CaseTerm.Token, caseItem.CaseTerm, outputBuilder);
+                            outputBuilder.Append(";\n");
+                            outputBuilder.Append("        break;\n");
+                            outputBuilder.Append("    }\n");
+                        }
+
+                        if (op.DefaultTerm != null)
+                        {
+                            outputBuilder.Append("    default:\n");
+                            outputBuilder.Append("    {\n");
+                            outputBuilder.Append("        ");
+                            ProcessExpression(op.DefaultTerm.Token, op.DefaultTerm, outputBuilder);
+                            outputBuilder.Append("\n    }\n\n");
+                        }
+
+                        outputBuilder.Append("}\n");
                     }
-
                     break;
                 }
             case EExprToken.EX_ArrayGetByRef:
@@ -688,6 +734,12 @@ public class Program
                 {
                     EX_VariableBase op = (EX_VariableBase)expression;
                     outputBuilder.Append(string.Join('.', op.Variable.New.Path.Select(n => n.Text)).Replace(" ", ""));
+                    break;
+                }
+            case EExprToken.EX_SoftObjectConst:
+                {
+                    EX_SoftObjectConst op = (EX_SoftObjectConst)expression;
+                    ProcessExpression(op.Value.Token, op.Value, outputBuilder);
                     break;
                 }
             case EExprToken.EX_ByteConst:

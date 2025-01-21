@@ -91,7 +91,7 @@ public static class Utils
             FMapProperty map => $"Map<{GetPropertyType(map.KeyProp)}, {GetPropertyType(map.ValueProp)}>",
             FMulticastDelegateProperty mdlgt => $"{mdlgt.SignatureFunction?.Name ?? "Unknown"} (Multicast Delegate)",
             FMulticastInlineDelegateProperty midlgt => $"{midlgt.SignatureFunction?.Name ?? "Unknown"} (Multicast Inline Delegate)",
-            FArrayProperty array => $"TArray<{GetPrefix(array.Inner.GetType().Name)}{GetPropertyType(array.Inner)}{(array.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || array.PropertyFlags.HasFlag(EPropertyFlags.ContainsInstancedReference) ? "*" : string.Empty)}>",
+            FArrayProperty array => $"TArray<{GetPrefix(array.Inner.GetType().Name)}{GetPropertyType(array.Inner)}{(array.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || array.PropertyFlags.HasFlag(EPropertyFlags.ContainsInstancedReference) ? "*" : string.Empty)}>",
             _ => GetUnknownFieldType(property)
         };
     }
