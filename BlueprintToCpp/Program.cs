@@ -16,6 +16,7 @@ using CUE4Parse.UE4.Assets.Exports;
 using System.Text.RegularExpressions;
 using Serilog;
 using Serilog.Sinks.SystemConsole.Themes;
+using CUE4Parse.UE4.Assets.Objects;
 
 namespace Main;
 
@@ -25,10 +26,9 @@ public static class Program
     {
         try
         {
-            Log.Logger = new LoggerConfiguration()
-                .WriteTo.Console(theme: AnsiConsoleTheme.Literate)
-                .CreateLogger();
-
+#if DEBUG
+            Log.Logger = new LoggerConfiguration().WriteTo.Console(theme: AnsiConsoleTheme.Literate).CreateLogger();
+#endif
             var config = Utils.LoadConfig("config.json");
 
             string pakFolderPath = config.PakFolderPath;
@@ -59,7 +59,7 @@ public static class Program
             }
 
             EGame version = config.Version;
-            if (string.IsNullOrEmpty(oodlePath) || oodlePath.Length < 1)
+            if (string.IsNullOrEmpty(version.ToString()) || version.ToString().Length < 1)
             {
                 Console.WriteLine("Please provide a UE version in the config.json file.");
                 return;
@@ -101,7 +101,8 @@ public static class Program
                                     if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "ObjectProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
                                     {
                                         outputBuilder.Replace($"{key.Name}placenolder", $"\"{key.Tag.GenericValue.ToString()}\"");
-                                    } else
+                                    }
+                                    else
                                     if (key.Tag.GetType().Name == "BoolProperty")
                                     {
                                         outputBuilder.Replace($"{key.Name}placenolder", $"{key.Tag.GenericValue.ToString().ToLower()}");
@@ -119,15 +120,14 @@ public static class Program
                                 if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "StructProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
                                     {
                                         outputBuilder.AppendLine($"    {Utils.GetPrefix(key.GetType().Name)} {key.Name} = \"{key.Tag.GenericValue}\";");
-                                    } else
+                                    }
+                                    else
                                     if (key.Tag.GetType().Name == "BoolProperty")
                                     {
                                         outputBuilder.Replace($"{key.Name}placenolder", $"{key.Tag.GenericValue.ToString().ToLower()}");
                                     }
                                     else
                                     {
-                                        //Console.WriteLine(key.Name);
-                                        //Console.WriteLine(key.Tag.GetType().Name);
                                         outputBuilder.AppendLine($"    {Utils.GetPrefix(key.GetType().Name)} {key.Name} = {key.Tag.GenericValue};");
                                     }
                                 }
@@ -135,7 +135,7 @@ public static class Program
                         }
                         else
                         {
-                            //outputBuilder.AppendLine($"fix\nvoid {export.Value.Name}");
+                            //outputBuilder.Append($"\nfix\nvoid {export.Value.Name}");
                         }
                     }
                 }
@@ -174,7 +174,7 @@ public static class Program
                     }
                     argsList = argsList.TrimEnd(',', ' ');
 
-                    outputBuilder.AppendLine($"\n{returnFunc} {function.Name.Replace(" ", "")}({argsList})\n{{");
+                    outputBuilder.AppendLine($"\n\t{returnFunc} {function.Name.Replace(" ", "")}({argsList})\n\t{{");
                     if (function?.ScriptBytecode != null)
                     {
                         foreach (KismetExpression property in function.ScriptBytecode)
@@ -184,7 +184,7 @@ public static class Program
                     } else
                     {
                         outputBuilder.Append("\n // This function does not have Bytecode \n\n");
-                        outputBuilder.Append("}\n");
+                        outputBuilder.Append("\t}\n");
                     }
                 }
 
@@ -194,7 +194,6 @@ public static class Program
             int targetIndex = outputBuilder.ToString().IndexOf("placenolder");
             string pattern = $@"\w+placenolder";
             string updatedOutput = Regex.Replace(outputBuilder.ToString(), pattern, "null");
-            //Console.WriteLine(updatedOutput);
             string exeDirectory = AppDomain.CurrentDomain.BaseDirectory;
             string outputFilePath = Path.Combine(exeDirectory, "Output.cpp");
             File.WriteAllText(outputFilePath, updatedOutput);
@@ -289,11 +288,11 @@ public static class Program
                     }
                     else if (opp.Length < 1)
                     {
-                        outputBuilder.Append($"    {op?.StackNode?.Name.Replace(" ", "")}(");
+                        outputBuilder.Append($"\t\t{op?.StackNode?.Name.Replace(" ", "")}(");
                     }
                     else
                     {
-                        outputBuilder.Append($"    {Utils.GetPrefix(op?.StackNode?.ResolvedObject?.Outer?.GetType()?.Name)}{op?.StackNode?.Name.Replace(" ", "")}(");
+                        outputBuilder.Append($"\t\t{Utils.GetPrefix(op?.StackNode?.ResolvedObject?.Outer?.GetType()?.Name)}{op?.StackNode?.Name.Replace(" ", "")}(");
                     }
 
                     for (int i = 0; i < opp.Length; i++)
@@ -323,7 +322,7 @@ public static class Program
                     for (int i = 0; i < opp.Length; i++)
                     {
                         if (opp.Length > 4) outputBuilder.Append("\n    ");
-                        ProcessExpression(opp[i].Token, opp[i], outputBuilder, true);
+                        ProcessExpression(opp[i].Token, opp[i], outputBuilder, true); // if context it fails and does ;\n\n
                         if (i < opp.Length - 1)
                         {
                             outputBuilder.Append(", ");
@@ -351,7 +350,7 @@ public static class Program
                     }
                     else
                     {
-                        outputBuilder.Append($"    {op.VirtualFunctionName.PlainText.Replace(" ", "")}(");
+                        outputBuilder.Append($"\t\t{op.VirtualFunctionName.PlainText.Replace(" ", "")}(");
                     }
                     for (int i = 0; i < opp.Length; i++)
                     {
@@ -377,16 +376,16 @@ public static class Program
                 {
                     EX_ComputedJump op = (EX_ComputedJump) expression;
                     EX_VariableBase opp = (EX_VariableBase) op.CodeOffsetExpression;
-                    outputBuilder.AppendLine($"    goto {string.Join('.', ((EX_VariableBase) op.CodeOffsetExpression).Variable.New.Path.Select(n => n.Text))};\n");
+                    outputBuilder.AppendLine($"\t\tgoto {string.Join('.', ((EX_VariableBase) op.CodeOffsetExpression).Variable.New.Path.Select(n => n.Text))};\n");
                     break;
                 }
             case EExprToken.EX_PopExecutionFlowIfNot:
                 {
                     EX_PopExecutionFlowIfNot op = (EX_PopExecutionFlowIfNot) expression;
-                    outputBuilder.Append("    if (!");
+                    outputBuilder.Append("\t\tif (!");
                     ProcessExpression(op.BooleanExpression.Token, op.BooleanExpression, outputBuilder);
                     outputBuilder.Append(") \r\n");
-                    outputBuilder.Append($"        FlowStack.Pop();\n\n");
+                    outputBuilder.Append($"\t\t    FlowStack.Pop();\n\n");
                     break;
                 }
             case EExprToken.EX_Cast:
@@ -417,21 +416,25 @@ public static class Program
             case EExprToken.EX_ArrayConst:
                 {
                     EX_ArrayConst op = (EX_ArrayConst) expression;
-                    outputBuilder.Append("TArray {"); // if TArray is a var it fails
+                    outputBuilder.Append("TArray {");
                     foreach (KismetExpression element in op.Elements)
                     {
                         outputBuilder.Append(" ");
                         ProcessExpression(element.Token, element, outputBuilder);
                     }
-                    if (op.Elements.Length < 1) outputBuilder.Append("  ");
+                    if (op.Elements.Length < 1)
+                        outputBuilder.Append("  ");
+                    else
+                        outputBuilder.Append(" ");
+
                     outputBuilder.Append("}");
                     break;
                 }
             case EExprToken.EX_SetArray:
                 {
                     EX_SetArray op = (EX_SetArray) expression;
-                    outputBuilder.Append("    ");
-                    ProcessExpression(op.AssigningProperty.Token, op.AssigningProperty, outputBuilder);
+                    outputBuilder.Append("\t\t");
+                    ProcessExpression(op.AssigningProperty.Token, op.AssigningProperty, outputBuilder); // if TArray is a var it fails
                     outputBuilder.Append(" = ");
                     outputBuilder.Append("TArray {");
                     for (int i = 0; i < op.Elements.Length; i++)
@@ -451,13 +454,13 @@ public static class Program
 
                     if (op.Elements.Length < 1)
                         outputBuilder.Append("  ");
-                    outputBuilder.Append("};\n");
+                    outputBuilder.Append(" };\n");
                     break;
                 }
             case EExprToken.EX_SetMap:
                 {
                     EX_SetMap op = (EX_SetMap) expression;
-                    outputBuilder.Append("    ");
+                    outputBuilder.Append("\t\t");
                     ProcessExpression(op.MapProperty.Token, op.MapProperty, outputBuilder);
                     outputBuilder.Append(" = ");
                     outputBuilder.Append("TMap {");
@@ -530,28 +533,28 @@ public static class Program
                             if (caseItem.CaseIndexValueTerm.Token == EExprToken.EX_IntConst)
                             {
                                 int caseValue = ((EX_IntConst) caseItem.CaseIndexValueTerm).Value;
-                                outputBuilder.Append($"    case {caseValue}:\n");
+                                outputBuilder.Append($"\t\tcase {caseValue}:\n");
                             }
                             else
                             {
-                                outputBuilder.Append("    case ");
+                                outputBuilder.Append("\t\tcase ");
                                 ProcessExpression(caseItem.CaseIndexValueTerm.Token, caseItem.CaseIndexValueTerm, outputBuilder);
                                 outputBuilder.Append(":\n");
                             }
 
-                            outputBuilder.Append("    {\n");
-                            outputBuilder.Append("        ");
+                            outputBuilder.Append("\t\t{\n");
+                            outputBuilder.Append("\t\t    ");
                             ProcessExpression(caseItem.CaseTerm.Token, caseItem.CaseTerm, outputBuilder);
                             outputBuilder.Append(";\n");
-                            outputBuilder.Append("        break;\n");
-                            outputBuilder.Append("    }\n");
+                            outputBuilder.Append("\t\t    break;\n");
+                            outputBuilder.Append("\t\t}\n");
                         }
 
                         if (op.DefaultTerm != null)
                         {
-                            outputBuilder.Append("    default:\n");
-                            outputBuilder.Append("    {\n");
-                            outputBuilder.Append("        ");
+                            outputBuilder.Append("\t\tdefault:\n");
+                            outputBuilder.Append("\t\t{\n");
+                            outputBuilder.Append("\t\t    ");
                             ProcessExpression(op.DefaultTerm.Token, op.DefaultTerm, outputBuilder);
                             outputBuilder.Append("\n    }\n\n");
                         }
@@ -562,10 +565,16 @@ public static class Program
                 }
             case EExprToken.EX_ArrayGetByRef:
                 {
-                    EX_ArrayGetByRef op = (EX_ArrayGetByRef)expression; // unfinished
+                    EX_ArrayGetByRef op = (EX_ArrayGetByRef) expression; // unfinished
                     ProcessExpression(op.ArrayVariable.Token, op.ArrayVariable, outputBuilder);
                     outputBuilder.Append(" Send Uasset to krowe ");
                     ProcessExpression(op.ArrayIndex.Token, op.ArrayIndex, outputBuilder);
+                    break;
+                }
+            case EExprToken.EX_BitFieldConst:
+                {
+                    EX_BitFieldConst op = (EX_BitFieldConst)expression;
+                    outputBuilder.Append(op.ConstValue);
                     break;
                 }
             case EExprToken.EX_MetaCast:
@@ -600,6 +609,7 @@ public static class Program
                     EX_ObjectConst op = (EX_ObjectConst)expression;
                     outputBuilder.Append("FindObject<");
                     string classString = op?.Value?.ResolvedObject?.Class?.ToString()?.Replace("'", "");
+
                     if (classString?.Contains(".") == true)
                     {
                         outputBuilder.Append("U" + classString.Split(".")[1]);
@@ -631,7 +641,7 @@ public static class Program
             case EExprToken.EX_BindDelegate:
                 {
                     EX_BindDelegate op = (EX_BindDelegate)expression;
-                    outputBuilder.Append("    ");
+                    outputBuilder.Append("\t\t");
                     ProcessExpression(op.Delegate.Token, op.Delegate, outputBuilder);
                     outputBuilder.Append($".BindUFunction(");
                     ProcessExpression(op.ObjectTerm.Token, op.ObjectTerm, outputBuilder);
@@ -639,22 +649,104 @@ public static class Program
                     outputBuilder.Append($");\n\n");
                     break;
                 }
+                // all the delegate functions suck
             case EExprToken.EX_AddMulticastDelegate:
                 {
-                    EX_AddMulticastDelegate op = (EX_AddMulticastDelegate)expression;
+                    EX_AddMulticastDelegate op = (EX_AddMulticastDelegate) expression;
+                    if (op.Delegate.Token == EExprToken.EX_LocalVariable || op.Delegate.Token == EExprToken.EX_InstanceVariable)
+                    {
+                        EX_VariableBase opp = (EX_VariableBase) op.Delegate;
+                        outputBuilder.Append("\t\t");
+                        ProcessExpression(op.Delegate.Token, op.Delegate, outputBuilder, true);
+                        outputBuilder.Append(".AddDelegate(");
+                        ProcessExpression(op.DelegateToAdd.Token, op.DelegateToAdd, outputBuilder);
+                        outputBuilder.Append($");\n\n");
+                    } else if (op.Delegate.Token != EExprToken.EX_Context)
+                    {
+                        Console.WriteLine($"Issue: EX_AddMulticastDelegate missing info: {op.StatementIndex}, {op.Delegate.Token}");
+                    } else
+                    {
+                        EX_Context opp = (EX_Context) op.Delegate;
+                        outputBuilder.Append("\t\t");
+                        ProcessExpression(op.Delegate.Token, op.Delegate, outputBuilder, true);
+                        outputBuilder.Append("->");
+                        ProcessExpression(opp.ContextExpression.Token, opp.ContextExpression, outputBuilder);
+                        outputBuilder.Append(".AddDelegate(");
+                        ProcessExpression(op.DelegateToAdd.Token, op.DelegateToAdd, outputBuilder);
+                        outputBuilder.Append($");\n\n");
+                    }
+                    break;
+                } // fix below at a later date
+            case EExprToken.EX_RemoveMulticastDelegate: // everything here has been guessed not compared to actual UE but does work fine and displays all infomation
+                {
+                    EX_RemoveMulticastDelegate op = (EX_RemoveMulticastDelegate) expression;
+                    if (op.Delegate.Token == EExprToken.EX_LocalVariable)
+                    {
+                        EX_LocalVariable opp = (EX_LocalVariable) op.Delegate;
+                        outputBuilder.Append("\t\t");
+                        ProcessExpression(op.Delegate.Token, op.Delegate, outputBuilder, true);
+                        outputBuilder.Append(".RemoveDelegate(");
+                        ProcessExpression(op.DelegateToAdd.Token, op.DelegateToAdd, outputBuilder);
+                        outputBuilder.Append($");\n\n");
+                    }
+                    else
                     if (op.Delegate.Token != EExprToken.EX_Context)
                     {
-                        Console.WriteLine("Issue: operation EX_AddMulticastDelegate aren't displayed due to it being ", op.Delegate.Token.ToString());
+                        Console.WriteLine("Issue: EX_RemoveMulticastDelegate missing info: ", op.StatementIndex);
                     }
-                    else {
-                    EX_Context opp = (EX_Context)op.Delegate; // this is incorret on some uassets
-                    outputBuilder.Append("    ");
-                    ProcessExpression(op.Delegate.Token, op.Delegate, outputBuilder, true);
-                    outputBuilder.Append("->");
-                    ProcessExpression(opp.ContextExpression.Token, opp.ContextExpression, outputBuilder);
-                    outputBuilder.Append(".AddDelegate(");
-                    ProcessExpression(op.DelegateToAdd.Token, op.DelegateToAdd, outputBuilder);
-                    outputBuilder.Append($");\n\n");
+                    else
+                    {
+                        EX_Context opp = (EX_Context) op.Delegate;
+                        outputBuilder.Append("\t\t");
+                        ProcessExpression(op.Delegate.Token, op.Delegate, outputBuilder, true);
+                        outputBuilder.Append("->");
+                        ProcessExpression(opp.ContextExpression.Token, opp.ContextExpression, outputBuilder);
+                        outputBuilder.Append(".RemoveDelegate(");
+                        ProcessExpression(op.DelegateToAdd.Token, op.DelegateToAdd, outputBuilder);
+                        outputBuilder.Append($");\n\n");
+                    }
+                    break;
+                }
+            case EExprToken.EX_CallMulticastDelegate: // everything here has been guessed not compared to actual UE but does work fine and displays all infomation
+                {
+                    EX_CallMulticastDelegate op = (EX_CallMulticastDelegate) expression;
+                    KismetExpression[] opp = (KismetExpression[]) op.Parameters;
+                    if (op.Delegate.Token == EExprToken.EX_InstanceVariable)
+                    {
+                        outputBuilder.Append("\t\t");
+                        ProcessExpression(op.Delegate.Token, op.Delegate, outputBuilder, true);
+                        outputBuilder.Append(".Call(");
+                        for (int i = 0; i < opp.Length; i++)
+                        {
+                            if (opp.Length > 4)
+                                outputBuilder.Append("\n    ");
+                            ProcessExpression(opp[i].Token, opp[i], outputBuilder, true);
+                            if (i < opp.Length - 1)
+                            {
+                                outputBuilder.Append(", ");
+                            }
+                        }
+                        outputBuilder.Append($");\n\n");
+                    } else if (op.Delegate.Token != EExprToken.EX_Context)
+                    {
+                        Console.WriteLine("Issue: EX_CallMulticastDelegate missing info: ", op.StatementIndex);
+                    }
+                    else
+                    {
+                        outputBuilder.Append("\t\t");
+                        ProcessExpression(op.Delegate.Token, op.Delegate, outputBuilder, true);
+                        outputBuilder.Append(".Call(");
+                        for (int i = 0; i < opp.Length; i++)
+                        {
+                            if (opp.Length > 4)
+                                outputBuilder.Append("\n    ");
+                            ProcessExpression(opp[i].Token, opp[i], outputBuilder, true);
+                            if (i < opp.Length - 1)
+                            {
+                                outputBuilder.Append(", ");
+                            }
+                        }
+                        outputBuilder.Append($");\n\n");
                     }
                     break;
                 }
@@ -675,7 +767,7 @@ public static class Program
             case EExprToken.EX_Context_FailSilent:
                 {
                     EX_Context op = (EX_Context)expression;
-                    outputBuilder.Append("    ");
+                    outputBuilder.Append("\t\t");
                     ProcessExpression(op.ObjectExpression.Token, op.ObjectExpression, outputBuilder, true);
                     if (!isParameter)
                     {
@@ -690,7 +782,7 @@ public static class Program
                     EX_Let op = (EX_Let)expression;
                     if (!isParameter)
                     {
-                        outputBuilder.Append("    ");
+                        outputBuilder.Append("\t\t");
                     }
                     ProcessExpression(op.Variable.Token, op.Variable, outputBuilder, true);
                     outputBuilder.Append(" = ");
@@ -710,7 +802,7 @@ public static class Program
                     EX_LetBase op = (EX_LetBase)expression;
                     if (!isParameter)
                     {
-                        outputBuilder.Append("    ");
+                        outputBuilder.Append("\t\t");
                     }
                     ProcessExpression(op.Variable.Token, op.Variable, outputBuilder, true);
                     outputBuilder.Append(" = ");
@@ -728,10 +820,10 @@ public static class Program
             case EExprToken.EX_JumpIfNot:
                 {
                     EX_JumpIfNot op = (EX_JumpIfNot)expression;
-                    outputBuilder.Append("    if (!");
+                    outputBuilder.Append("\t\tif (!");
                     ProcessExpression(op.BooleanExpression.Token, op.BooleanExpression, outputBuilder);
                     outputBuilder.Append(") \r\n");
-                    outputBuilder.Append("        goto Label_");
+                    outputBuilder.Append("\t\t    goto Label_");
                     outputBuilder.Append(op.CodeOffset);
                     outputBuilder.Append(";\n\n");
                     break;
@@ -739,7 +831,7 @@ public static class Program
             case EExprToken.EX_Jump:
                 {
                     EX_Jump op = (EX_Jump)expression;
-                    outputBuilder.Append($"    goto Label_{op.CodeOffset};\n\n");
+                    outputBuilder.Append($"\t\tgoto Label_{op.CodeOffset};\n\n");
                     break;
                 }
             // Static expressions
@@ -843,8 +935,7 @@ public static class Program
                 {
                     if (textConst.Value is FScriptText scriptText)
                     {
-                        ProcessExpression(scriptText.SourceString.Token, scriptText.SourceString, outputBuilder, true);
-                        //outputBuilder.Append(scriptText.SourceString);
+                        ProcessExpression(scriptText.SourceString.Token, scriptText.SourceString, outputBuilder, true); // cursed sometimes so i'll add a name length just for now
                     }
                     else
                     {
@@ -857,7 +948,7 @@ public static class Program
                 break;
             case EExprToken.EX_EndOfScript:
             case EExprToken.EX_EndParmValue:
-                outputBuilder.AppendLine("}");
+                outputBuilder.AppendLine("\t}");
                 break;
             case EExprToken.EX_NoObject:
             case EExprToken.EX_NoInterface:
@@ -881,11 +972,11 @@ public static class Program
             case EExprToken.EX_Nothing:
             case EExprToken.EX_PopExecutionFlow:
             case EExprToken.EX_PushExecutionFlow:
-            case EExprToken.EX_CallMulticastDelegate: // some here are unsupported
-            case EExprToken.EX_RemoveMulticastDelegate:
-            case EExprToken.EX_ClearMulticastDelegate:
+                //case EExprToken.EX_RemoveMulticastDelegate:// some here are unsupported
+                //case EExprToken.EX_ClearMulticastDelegate:
                 break;
             default:
+                Console.WriteLine($"Unsupported token: {token}");
                 outputBuilder.Append($"{token}");
                 break;
         }
