@@ -101,23 +101,36 @@ public class Program
                             {
                                 if (outputBuilder.ToString().Contains($"{key.Name}placenolder"))
                                 {
-                                    if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "ObjectProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty")
+                                    if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "ObjectProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
                                     {
                                         outputBuilder.Replace($"{key.Name}placenolder", $"\"{key.Tag.GenericValue.ToString()}\"");
+                                    } else
+                                    if (key.Tag.GetType().Name == "BoolProperty")
+                                    {
+                                        outputBuilder.Replace($"{key.Name}placenolder", $"{key.Tag.GenericValue.ToString().ToLower()}");
                                     }
                                     else
                                     {
+                                        //Console.WriteLine(key.Name);
+                                        //Console.WriteLine(key.Tag.GetType().Name);
                                         outputBuilder.Replace($"{key.Name}placenolder", key.Tag.GenericValue.ToString());
                                     }
 
                                 }
                                 else
                                 { // findout how to setup types for propertytag and this is a mess
-                                if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "StructProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty")
+                                if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "StructProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
                                     {
                                         outputBuilder.AppendLine($"    {Utils.GetPrefix(key.GetType().Name)} {key.Name} = \"{key.Tag.GenericValue}\";");
                                     } else
+                                    if (key.Tag.GetType().Name == "BoolProperty")
                                     {
+                                        outputBuilder.Replace($"{key.Name}placenolder", $"{key.Tag.GenericValue.ToString().ToLower()}");
+                                    }
+                                    else
+                                    {
+                                        //Console.WriteLine(key.Name);
+                                        //Console.WriteLine(key.Tag.GetType().Name);
                                         outputBuilder.AppendLine($"    {Utils.GetPrefix(key.GetType().Name)} {key.Name} = {key.Tag.GenericValue};"); 
                                     }
                                 }
@@ -420,21 +433,36 @@ public class Program
             case EExprToken.EX_SetArray:
                 {
                     EX_SetArray op = (EX_SetArray) expression;
+                    outputBuilder.Append("    ");
+                    ProcessExpression(op.AssigningProperty.Token, op.AssigningProperty, outputBuilder);
+                    outputBuilder.Append(" = ");
                     outputBuilder.Append("TArray {");
-                    foreach (KismetExpression element in op.Elements)
+                    for (int i = 0; i < op.Elements.Length; i++)
                     {
+                        KismetExpression element = op.Elements[i];
                         outputBuilder.Append(" ");
                         ProcessExpression(element.Token, element, outputBuilder);
-                        outputBuilder.Append(" ");
+
+                        if (i < op.Elements.Length - 1)
+                        {
+                            outputBuilder.Append(",");
+                        } else
+                        {
+                            outputBuilder.Append(" ");
+                        }
                     }
+
                     if (op.Elements.Length < 1)
                         outputBuilder.Append("  ");
-                    outputBuilder.Append("}\n");
+                    outputBuilder.Append("};\n");
                     break;
                 }
             case EExprToken.EX_SetMap:
                 {
                     EX_SetMap op = (EX_SetMap) expression;
+                    outputBuilder.Append("    ");
+                    ProcessExpression(op.MapProperty.Token, op.MapProperty, outputBuilder);
+                    outputBuilder.Append(" = ");
                     outputBuilder.Append("TMap {");
                     for (int i = 0; i < op.Elements.Length; i++)
                     {
@@ -667,7 +695,7 @@ public class Program
                     {
                         outputBuilder.Append("    ");
                     }
-                    ProcessExpression(op.Variable.Token, op.Variable, outputBuilder);
+                    ProcessExpression(op.Variable.Token, op.Variable, outputBuilder, true);
                     outputBuilder.Append(" = ");
                     ProcessExpression(op.Assignment.Token, op.Assignment, outputBuilder, true);
                     if (!isParameter)
@@ -818,7 +846,8 @@ public class Program
                 {
                     if (textConst.Value is FScriptText scriptText)
                     {
-                        outputBuilder.Append(scriptText.SourceString);
+                        ProcessExpression(scriptText.SourceString.Token, scriptText.SourceString, outputBuilder, true);
+                        //outputBuilder.Append(scriptText.SourceString);
                     }
                     else
                     {
