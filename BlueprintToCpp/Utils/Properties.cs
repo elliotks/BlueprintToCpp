@@ -90,9 +90,8 @@ public static class Utils
             FFieldPathProperty fieldPath => $"{fieldPath.PropertyClass.Text} field path",
             FDelegateProperty dlgt => $"{dlgt.SignatureFunction?.Name ?? "UNKNOWN"} (Delegate)",
             FMapProperty map => $"TMap<{GetPropertyType(map.KeyProp)}, {GetPropertyType(map.ValueProp)}>",
-            FMulticastDelegateProperty mdlgt => $"{mdlgt.SignatureFunction?.Name ?? "UNKNOWN"} (Multicast Delegate)",
-            FMulticastInlineDelegateProperty midlgt => $"{midlgt.SignatureFunction?.Name ?? "UNKNOWN"} (Multicast Inline Delegate)",
-            //FVector vector => $"{{{vector.X}, {vector.Y}, {vector.Z}}}",
+            FMulticastDelegateProperty mdlgt => $"{mdlgt.SignatureFunction?.Name ?? "UNKNOWN"} (MulticastDelegateProperty)",
+            FMulticastInlineDelegateProperty midlgt => $"{midlgt.SignatureFunction?.Name ?? "UNKNOWN"} (MulticastInlineDelegateProperty)",
             FArrayProperty array => $"TArray<{GetPrefix(array.Inner.GetType().Name)}{GetPropertyType(array.Inner)}{(array.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || array.PropertyFlags.HasFlag(EPropertyFlags.ContainsInstancedReference) ? "*" : string.Empty)}>",
             _ => GetUnknownFieldType(property)
         };

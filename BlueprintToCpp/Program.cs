@@ -191,7 +191,7 @@ public static class Program
                     }
                 }
 
-                outputBuilder.Append("\n\n}");
+                outputBuilder.Append("\n\n}\n");
             }
             else if (verseTest)
             {
@@ -398,13 +398,14 @@ public static class Program
                     EX_VariableBase opp = (EX_VariableBase) op.AssignmentExpression;
                     var nerd = string.Join('.', op.DestinationProperty.New.Path.Select(n => n.Text));
                     var nerdd = string.Join('.', opp.Variable.New.Path.Select(n => n.Text));
+                    
                     if (!isParameter)
                     {
-                        outputBuilder.Append($"\n\t\t{nerd} = {nerdd};\n\n");
+                        outputBuilder.Append($"\t\t{(nerd.Contains("K2Node_") ? $"UberGraphFrame->{nerd}" : nerd)} = {nerdd};\n\n"); // hardcoded
                     }
                     else
                     {
-                        outputBuilder.Append($"\n\t\t{nerd} = {nerdd}");
+                        outputBuilder.Append($"\t\t{(nerd.Contains("K2Node_") ? $"UberGraphFrame->{nerd}" : nerd)} = {nerdd}");
                     }
                     break;
                 }
@@ -441,7 +442,7 @@ public static class Program
                     }
                     else
                     {
-                        outputBuilder.Append($");\n\n");
+                        outputBuilder.Append($");\n");
                     }
                     break;
                 }
@@ -594,7 +595,10 @@ public static class Program
 
                     if (op.Elements.Length < 1)
                         outputBuilder.Append("  ");
-                    outputBuilder.Append(" };\n");
+                    else
+                        outputBuilder.Append(" ");
+
+                    outputBuilder.Append("};\n\n");
                     break;
                 }
             case EExprToken.EX_SetMap:
@@ -649,7 +653,7 @@ public static class Program
                             if (!isFirst)
                                 outputBuilder.Append(" : ");
 
-                            ProcessExpression(caseItem.CaseTerm.Token, caseItem.CaseTerm, outputBuilder);
+                            ProcessExpression(caseItem.CaseTerm.Token, caseItem.CaseTerm, outputBuilder, true);
                             isFirst = false;
                         }
 
@@ -658,7 +662,7 @@ public static class Program
                             if (!isFirst)
                                 outputBuilder.Append(" : ");
 
-                            ProcessExpression(caseItem.CaseTerm.Token, caseItem.CaseTerm, outputBuilder);
+                            ProcessExpression(caseItem.CaseTerm.Token, caseItem.CaseTerm, outputBuilder, true);
                         }
                     }
                     else
@@ -703,12 +707,13 @@ public static class Program
                     }
                     break;
                 }
-            case EExprToken.EX_ArrayGetByRef:
+            case EExprToken.EX_ArrayGetByRef: // i assume get array with index
                 {
-                    EX_ArrayGetByRef op = (EX_ArrayGetByRef) expression; // unfinished
-                    ProcessExpression(op.ArrayVariable.Token, op.ArrayVariable, outputBuilder);
-                    outputBuilder.Append(" Send Uasset to krowe ");
+                    EX_ArrayGetByRef op = (EX_ArrayGetByRef) expression; // FortniteGame/Plugins/GameFeatures/FM/PilgrimCore/Content/Player/Components/BP_PilgrimPlayerControllerComponent.uasset
+                    ProcessExpression(op.ArrayVariable.Token, op.ArrayVariable, outputBuilder, true);
+                    outputBuilder.Append("[");
                     ProcessExpression(op.ArrayIndex.Token, op.ArrayIndex, outputBuilder);
+                    outputBuilder.Append("]");
                     break;
                 }
             case EExprToken.EX_BitFieldConst:
@@ -772,7 +777,8 @@ public static class Program
                     if (isParameter)
                     {
                         outputBuilder.Append("\")");
-                    } else
+                    }
+                    elseEX_Context
                     {
                         outputBuilder.Append("\")");
                     }
@@ -895,7 +901,7 @@ public static class Program
                     ProcessExpression(op.ContextExpression.Token, op.ContextExpression, outputBuilder, true);
                     if (!isParameter)
                     {
-                        outputBuilder.Append(";\n");
+                        outputBuilder.Append(";\n\n");
                     }
                     break;
                 }

@@ -22,10 +22,10 @@ Powered by [CUE4Parse](https://github.com/FabianFG/CUE4Parse)
     Example:
     ```json
     {
-      "PakFolderPath": "C:\\Program Files\\Epic Games\\Fortnite\\FortniteGame\\Content\\Paks",
+      "PakFolderPath": "C:/Program Files/Epic Games/Fortnite/FortniteGame/Content/Paks",
       "BlueprintPath": "FortniteGame/Content/Athena/Cosmetics/Sprays/BP_SprayDecal.uasset",
-      "OodlePath": "C:\\Users\\krowe\\BlueprintToCpp\\oo2core_5_win64.dll",
-      "UsmapPath": "C:\\Users\\krowe\\BlueprintToCpp\\++Fortnite+Release-33.20-CL-39082670-Windows_oo.usmap",
+      "OodlePath": "C:/Users/krowe/BlueprintToCpp/oo2core_5_win64.dll",
+      "UsmapPath": "C:/Users/krowe/BlueprintToCpp/++Fortnite+Release-33.20-CL-39082670-Windows_oo.usmap",
       "Version": "GAME_UE5_LATEST"
     }
     ```
