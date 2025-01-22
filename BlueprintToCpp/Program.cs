@@ -16,12 +16,13 @@ using CUE4Parse.UE4.Assets.Exports;
 using System.Text.RegularExpressions;
 using Serilog;
 using Serilog.Sinks.SystemConsole.Themes;
-using CUE4Parse.UE4.Assets.Objects;
+using CUE4Parse.UE4.Assets.Exports.Verse;
 
 namespace Main;
 
 public static class Program
 {
+    static bool verseTest = false;
     public static async Task Main(string[] args)
     {
         try
@@ -92,7 +93,7 @@ public static class Program
                     {
                         if (export.Value.Name.StartsWith("Default__") && export.Value.Name.EndsWith(mainClass))
                         {
-                            var exportObject = (UObject)export.Value;
+                            var exportObject = (UObject) export.Value;
 
                             foreach (var key in exportObject.Properties)
                             {
@@ -117,12 +118,12 @@ public static class Program
                                 }
                                 else
                                 { // findout how to setup types for propertytag and this is a mess
-                                if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "StructProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
+                                    if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "StructProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
                                     {
                                         outputBuilder.AppendLine($"    {Utils.GetPrefix(key.GetType().Name)} {key.Name} = \"{key.Tag.GenericValue}\";");
                                     }
                                     else
-                                    if (key.Tag.GetType().Name == "BoolProperty")
+                                        if (key.Tag.GetType().Name == "BoolProperty")
                                     {
                                         outputBuilder.Replace($"{key.Name}placenolder", $"{key.Tag.GenericValue.ToString().ToLower()}");
                                     }
@@ -144,8 +145,9 @@ public static class Program
 
                 var functions = package.ExportsLazy
                     .Where(e => e.Value is UFunction)
-                    .Select(e => (UFunction)e.Value)
-                    .OrderBy(f => {
+                    .Select(e => (UFunction) e.Value)
+                    .OrderBy(f =>
+                    {
                         var functionName = f.Name.ToString();
                         int index = funcMapOrder.IndexOf(functionName);
                         return index >= 0 ? index : int.MaxValue;
@@ -181,7 +183,8 @@ public static class Program
                         {
                             ProcessExpression(property.Token, property, outputBuilder);
                         }
-                    } else
+                    }
+                    else
                     {
                         outputBuilder.Append("\n // This function does not have Bytecode \n\n");
                         outputBuilder.Append("\t}\n");
@@ -190,7 +193,135 @@ public static class Program
 
                 outputBuilder.Append("\n\n}");
             }
+            else if (verseTest)
+            {
+                var VerseClass = package?.ExportsLazy.Where(export => export.Value is UVerseClass).Select(export => (UVerseClass) export.Value).FirstOrDefault();
 
+                if (VerseClass != null)
+                {
+                    mainClass = VerseClass.Name;
+                    outputBuilder.AppendLine($"class {Utils.GetPrefix(VerseClass.GetType().Name)}{VerseClass.Name} : public {Utils.GetPrefix(VerseClass.GetType().Name)}{VerseClass.SuperStruct.Name}\n{{\npublic:");
+
+                    foreach (FProperty property in VerseClass.ChildProperties)
+                    {
+                        outputBuilder.AppendLine($"    {Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || Utils.GetPropertyProperty(property) ? "*" : string.Empty)} {property.Name} = {property.Name}placenolder;");
+                    }
+
+                    foreach (var export in package.ExportsLazy)
+                    {
+                        if (export.Value is not UBlueprintGeneratedClass)
+                        {
+                            if (export.Value.Name.StartsWith("Default__") && export.Value.Name.EndsWith(mainClass))
+                            {
+                                var exportObject = (UObject) export.Value;
+
+                                foreach (var key in exportObject.Properties)
+                                {
+                                    if (outputBuilder.ToString().Contains($"{key.Name}placenolder"))
+                                    {
+                                        if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "ObjectProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
+                                        {
+                                            outputBuilder.Replace($"{key.Name}placenolder", $"\"{key.Tag.GenericValue.ToString()}\"");
+                                        }
+                                        else
+                                        if (key.Tag.GetType().Name == "BoolProperty")
+                                        {
+                                            outputBuilder.Replace($"{key.Name}placenolder", $"{key.Tag.GenericValue.ToString().ToLower()}");
+                                        }
+                                        else
+                                        {
+                                            //Console.WriteLine(key.Name);
+                                            //Console.WriteLine(key.Tag.GetType().Name);
+                                            outputBuilder.Replace($"{key.Name}placenolder", key.Tag.GenericValue.ToString());
+                                        }
+
+                                    }
+                                    else
+                                    { // findout how to setup types for propertytag and this is a mess
+                                        if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "StructProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
+                                        {
+                                            outputBuilder.AppendLine($"    {Utils.GetPrefix(key.GetType().Name)} {key.Name} = \"{key.Tag.GenericValue}\";");
+                                        }
+                                        else
+                                            if (key.Tag.GetType().Name == "BoolProperty")
+                                        {
+                                            outputBuilder.Replace($"{key.Name}placenolder", $"{key.Tag.GenericValue.ToString().ToLower()}");
+                                        }
+                                        else
+                                        {
+                                            outputBuilder.AppendLine($"    {Utils.GetPrefix(key.GetType().Name)} {key.Name} = {key.Tag.GenericValue};");
+                                        }
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                //outputBuilder.Append($"\nfix\nvoid {export.Value.Name}");
+                            }
+                        }
+                    }
+
+                    var funcMapOrder = VerseClass.FuncMap.Keys.Select(fname => fname.ToString()).ToList();
+
+                    var functions = package.ExportsLazy
+                        .Where(e => e.Value is UFunction)
+                        .Select(e => (UFunction) e.Value)
+                        .OrderBy(f =>
+                        {
+                            var functionName = f.Name.ToString();
+                            int index = funcMapOrder.IndexOf(functionName);
+                            return index >= 0 ? index : int.MaxValue;
+                        })
+                        .ThenBy(f => f.Name.ToString())
+                        .ToList();
+
+                    foreach (var function in functions)
+                    {
+                        string argsList = "";
+                        string returnFunc = "void";
+                        if (function?.ChildProperties != null)
+                        {
+                            foreach (FProperty property in function.ChildProperties)
+                            {
+                                if (property.Name.PlainText == "ReturnValue")
+                                {
+                                    returnFunc = $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || Utils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}";
+                                }
+                                else if (!(property.Name.ToString().EndsWith("_ReturnValue") ||
+                                          property.Name.ToString().StartsWith("CallFunc_") ||
+                                          property.Name.ToString().StartsWith("K2Node_") ||
+                                          property.Name.ToString().StartsWith("Temp_")) || // removes useless args
+                                          property.PropertyFlags.HasFlag(EPropertyFlags.Edit))
+                                {
+                                    argsList += $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || Utils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}{(property.PropertyFlags.HasFlag(EPropertyFlags.OutParm) ? "&" : string.Empty)} {property.Name}, ";
+                                }
+                            }
+                        }
+                        argsList = argsList.TrimEnd(',', ' ');
+
+                        outputBuilder.AppendLine($"\n\t{returnFunc} {function.Name.Replace(" ", "")}({argsList})\n\t{{");
+                        if (function?.ScriptBytecode != null)
+                        {
+                            foreach (KismetExpression property in function.ScriptBytecode)
+                            {
+                                ProcessExpression(property.Token, property, outputBuilder);
+                            }
+                        }
+                        else
+                        {
+                            outputBuilder.Append("\n // This function does not have Bytecode \n\n");
+                            outputBuilder.Append("\t}\n");
+                        }
+                    }
+                    // loop through DisplayNameToUENameFunctionMap and apply fixes
+                    outputBuilder.Append("\n\n}");
+                }
+            }
+            else
+            {
+                Console.WriteLine("No Blueprint Found nor Verse set");
+                return;
+            }
             int targetIndex = outputBuilder.ToString().IndexOf("placenolder");
             string pattern = $@"\w+placenolder";
             string updatedOutput = Regex.Replace(outputBuilder.ToString(), pattern, "null");
@@ -269,11 +400,11 @@ public static class Program
                     var nerdd = string.Join('.', opp.Variable.New.Path.Select(n => n.Text));
                     if (!isParameter)
                     {
-                        outputBuilder.Append($"\n    {nerd} = {nerdd};\n\n");
+                        outputBuilder.Append($"\n\t\t{nerd} = {nerdd};\n\n");
                     }
                     else
                     {
-                        outputBuilder.Append($"\n    {nerd} = {nerdd}");
+                        outputBuilder.Append($"\n\t\t{nerd} = {nerdd}");
                     }
                     break;
                 }
@@ -375,8 +506,17 @@ public static class Program
             case EExprToken.EX_ComputedJump:
                 {
                     EX_ComputedJump op = (EX_ComputedJump) expression;
-                    EX_VariableBase opp = (EX_VariableBase) op.CodeOffsetExpression;
-                    outputBuilder.AppendLine($"\t\tgoto {string.Join('.', ((EX_VariableBase) op.CodeOffsetExpression).Variable.New.Path.Select(n => n.Text))};\n");
+                    if (op.CodeOffsetExpression is EX_VariableBase)
+                    {
+                        EX_VariableBase opp = (EX_VariableBase) op.CodeOffsetExpression;
+                        outputBuilder.AppendLine($"\t\tgoto {string.Join('.', ((EX_VariableBase) op.CodeOffsetExpression).Variable.New.Path.Select(n => n.Text))};\n");
+                    }
+                    else
+                    {
+                        EX_CallMath opp = (EX_CallMath) op.CodeOffsetExpression;
+                        ProcessExpression(opp.Token, opp, outputBuilder, true);
+                        //outputBuilder.AppendLine($"\t\tgoto {string.Join('.', ((EX_VariableBase) op.CodeOffsetExpression).Variable.New.Path.Select(n => n.Text))};\n");
+                    }
                     break;
                 }
             case EExprToken.EX_PopExecutionFlowIfNot:
@@ -655,7 +795,6 @@ public static class Program
                     EX_AddMulticastDelegate op = (EX_AddMulticastDelegate) expression;
                     if (op.Delegate.Token == EExprToken.EX_LocalVariable || op.Delegate.Token == EExprToken.EX_InstanceVariable)
                     {
-                        EX_VariableBase opp = (EX_VariableBase) op.Delegate;
                         outputBuilder.Append("\t\t");
                         ProcessExpression(op.Delegate.Token, op.Delegate, outputBuilder, true);
                         outputBuilder.Append(".AddDelegate(");
@@ -676,25 +815,21 @@ public static class Program
                         outputBuilder.Append($");\n\n");
                     }
                     break;
-                } // fix below at a later date
+                }
             case EExprToken.EX_RemoveMulticastDelegate: // everything here has been guessed not compared to actual UE but does work fine and displays all infomation
                 {
                     EX_RemoveMulticastDelegate op = (EX_RemoveMulticastDelegate) expression;
-                    if (op.Delegate.Token == EExprToken.EX_LocalVariable)
+                    if (op.Delegate.Token == EExprToken.EX_LocalVariable || op.Delegate.Token == EExprToken.EX_InstanceVariable)
                     {
-                        EX_LocalVariable opp = (EX_LocalVariable) op.Delegate;
                         outputBuilder.Append("\t\t");
                         ProcessExpression(op.Delegate.Token, op.Delegate, outputBuilder, true);
                         outputBuilder.Append(".RemoveDelegate(");
                         ProcessExpression(op.DelegateToAdd.Token, op.DelegateToAdd, outputBuilder);
                         outputBuilder.Append($");\n\n");
-                    }
-                    else
-                    if (op.Delegate.Token != EExprToken.EX_Context)
+                    } else if (op.Delegate.Token != EExprToken.EX_Context)
                     {
                         Console.WriteLine("Issue: EX_RemoveMulticastDelegate missing info: ", op.StatementIndex);
-                    }
-                    else
+                    } else
                     {
                         EX_Context opp = (EX_Context) op.Delegate;
                         outputBuilder.Append("\t\t");
@@ -711,7 +846,7 @@ public static class Program
                 {
                     EX_CallMulticastDelegate op = (EX_CallMulticastDelegate) expression;
                     KismetExpression[] opp = (KismetExpression[]) op.Parameters;
-                    if (op.Delegate.Token == EExprToken.EX_InstanceVariable)
+                    if (op.Delegate.Token == EExprToken.EX_LocalVariable || op.Delegate.Token == EExprToken.EX_InstanceVariable)
                     {
                         outputBuilder.Append("\t\t");
                         ProcessExpression(op.Delegate.Token, op.Delegate, outputBuilder, true);
@@ -870,7 +1005,7 @@ public static class Program
                 {
                     EX_Return op = (EX_Return)expression;
                     bool tocheck = op.ReturnExpression.Token == EExprToken.EX_Nothing;
-                    outputBuilder.Append($"\n    return");
+                    outputBuilder.Append($"\n\t\treturn");
                     if (!tocheck) outputBuilder.Append(" ");
                     ProcessExpression(op.ReturnExpression.Token, op.ReturnExpression, outputBuilder, true);
                     outputBuilder.AppendLine(";\n\n");
@@ -911,8 +1046,14 @@ public static class Program
                 }
             case EExprToken.EX_IntConst:
                 {
-                    EX_IntConst op = (EX_IntConst)expression;
+                    EX_IntConst op = (EX_IntConst) expression;
                     outputBuilder.Append(op.Value.ToString());
+                    break;
+                }
+            case EExprToken.EX_PropertyConst:
+                {
+                    EX_PropertyConst op = (EX_PropertyConst) expression;
+                    outputBuilder.Append(string.Join('.', op.Property.New.Path.Select(n => n.Text)).Replace(" ", ""));
                     break;
                 }
             case EExprToken.EX_StringConst:
@@ -970,6 +1111,7 @@ public static class Program
                 outputBuilder.Append("this");
                 break;
             case EExprToken.EX_Nothing:
+            case EExprToken.EX_Tracepoint:
             case EExprToken.EX_PopExecutionFlow:
             case EExprToken.EX_PushExecutionFlow:
                 //case EExprToken.EX_RemoveMulticastDelegate:// some here are unsupported
