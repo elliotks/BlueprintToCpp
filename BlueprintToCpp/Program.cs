@@ -17,12 +17,20 @@ using System.Text.RegularExpressions;
 using Serilog;
 using Serilog.Sinks.SystemConsole.Themes;
 using CUE4Parse.UE4.Assets.Exports.Verse;
-
+using CUE4Parse.UE4.Assets.Objects;
 namespace Main;
 
 public static class Program
 {
     static bool verseTest = false;
+    private class StatementInfo
+    {
+        public int Index { get; set; }
+        public int LineNum { get; set; }
+    }
+    private static List<StatementInfo> statementIndices = new List<StatementInfo>();
+    private static List<int> jumpCodeOffsets = new List<int>();
+
     public static async Task Main(string[] args)
     {
         try
@@ -33,7 +41,8 @@ public static class Program
             var config = Utils.LoadConfig("config.json");
 
             string pakFolderPath = config.PakFolderPath;
-            if (string.IsNullOrEmpty(pakFolderPath) || pakFolderPath.Length < 1) {
+            if (string.IsNullOrEmpty(pakFolderPath) || pakFolderPath.Length < 1)
+            {
                 Console.WriteLine("Please provide a pak folder path in the config.json file.");
                 return;
             }
@@ -75,7 +84,7 @@ public static class Program
 
             string mainClass = string.Empty;
 
-            var blueprintGeneratedClass = package?.ExportsLazy.Where(export => export.Value is UBlueprintGeneratedClass).Select(export => (UBlueprintGeneratedClass)export.Value).FirstOrDefault();
+            var blueprintGeneratedClass = package?.ExportsLazy.Where(export => export.Value is UBlueprintGeneratedClass).Select(export => (UBlueprintGeneratedClass) export.Value).FirstOrDefault();
 
             if (blueprintGeneratedClass != null)
             {
@@ -84,7 +93,7 @@ public static class Program
 
                 foreach (FProperty property in blueprintGeneratedClass.ChildProperties)
                 {
-                    outputBuilder.AppendLine($"    {Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || Utils.GetPropertyProperty(property) ? "*" : string.Empty)} {property.Name} = {property.Name}placenolder;");
+                    outputBuilder.AppendLine($"\t{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || Utils.GetPropertyProperty(property) ? "*" : string.Empty)} {property.Name.PlainText.Replace(" ", "")} = {property.Name.PlainText.Replace(" ", "")}placenolder;");
                 }
 
                 foreach (var export in package.ExportsLazy)
@@ -97,39 +106,74 @@ public static class Program
 
                             foreach (var key in exportObject.Properties)
                             {
-                                if (outputBuilder.ToString().Contains($"{key.Name}placenolder"))
-                                {
-                                    if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "ObjectProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
-                                    {
-                                        outputBuilder.Replace($"{key.Name}placenolder", $"\"{key.Tag.GenericValue.ToString()}\"");
-                                    }
-                                    else
-                                    if (key.Tag.GetType().Name == "BoolProperty")
-                                    {
-                                        outputBuilder.Replace($"{key.Name}placenolder", $"{key.Tag.GenericValue.ToString().ToLower()}");
-                                    }
-                                    else
-                                    {
-                                        //Console.WriteLine(key.Name);
-                                        //Console.WriteLine(key.Tag.GetType().Name);
-                                        outputBuilder.Replace($"{key.Name}placenolder", key.Tag.GenericValue.ToString());
-                                    }
+                                string placeholder = $"{key.Name}placenolder";
+                                string result = key.Tag.GenericValue?.ToString();
 
+                                if (outputBuilder.ToString().Contains(placeholder))
+                                {
+                                    if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
+                                    {
+                                        outputBuilder.Replace(placeholder, $"\"{result}\"");
+                                    }
+                                    else if (key.Tag.GetType().Name == "SetProperty")
+                                    {
+                                        var nrd = (UScriptSet) key.Tag.GenericValue;
+                                        var formattedSet = "[\n" + string.Join(",\n", nrd.Properties.Select((p, i) => $"\t\"{p.GenericValue}\"").ToArray()) + "\n\t]";
+                                        outputBuilder.Replace(placeholder, formattedSet);
+                                    }
+                                    else if (key.Tag.GetType().Name == "MapProperty")
+                                    {
+                                        var nrd = (UScriptMap) key.Tag.GenericValue;
+                                        var formattedMap = "[\n" + string.Join(",\n", nrd.Properties.Select(kvp => $"\t{{\n\t\t\"{kvp.Key}\": \"{kvp.Value}\"\n\t}}")) + "\n\t]";
+                                        outputBuilder.Replace(placeholder, formattedMap);
+                                    }
+                                    else if (key.Tag.GetType().Name == "ArrayProperty")
+                                    {
+                                        var nrd = (UScriptArray) key.Tag.GenericValue;
+                                        var formattedArray = "[\n" + string.Join(",\n", nrd.Properties.Select(p => $"\t{{\n\t\t\"{p.GenericValue}\": \"{p.GenericValue}\"\n\t}}")) + "\n\t]"; // fix this
+                                        outputBuilder.AppendLine($"\t{key.Name}: {formattedArray}");
+                                    }
+                                    else if (key.Tag.GetType().Name == "BoolProperty")
+                                    {
+                                        outputBuilder.Replace(placeholder, result.ToLower());
+                                    }
+                                    else
+                                    {
+                                        outputBuilder.Replace(placeholder, result);
+                                    }
                                 }
                                 else
-                                { // findout how to setup types for propertytag and this is a mess
+                                {
                                     if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "StructProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
+                                    {// i honestly dislike AppendLine using Append is better in my preference
+                                        outputBuilder.AppendLine($"\t{key.Name.PlainText.Replace(" ", "")} = \"{result}\";");
+                                    }
+                                    else if (key.Tag.GetType().Name == "SetProperty")
                                     {
-                                        outputBuilder.AppendLine($"    {Utils.GetPrefix(key.GetType().Name)} {key.Name} = \"{key.Tag.GenericValue}\";");
+                                        var nrd = (UScriptSet) key.Tag.GenericValue;
+                                        var formattedSet = "[\n" + string.Join(",\n", nrd.Properties.Select((p, i) => $"\t\"{p.GenericValue}\"").ToArray()) + "\n\t]";
+                                        outputBuilder.AppendLine($"\t{key.Name.PlainText.Replace(" ", "")}: {formattedSet}");
+                                    }
+                                    else if (key.Tag.GetType().Name == "MapProperty")
+                                    {
+                                        var nrd = (UScriptMap) key.Tag.GenericValue;
+                                        var formattedMap = "[\n" + string.Join(",\n", nrd.Properties.Select(kvp => $"\t{{\n\t\t\"{kvp.Key}\": \"{kvp.Value}\"\n\t}}")) + "\n\t]";
+                                        outputBuilder.AppendLine($"\t{key.Name.PlainText.Replace(" ", "")}: {formattedMap}");
+                                    }
+                                    else if (key.Tag.GetType().Name == "ArrayProperty")
+                                    {
+                                        var nrd = (UScriptArray) key.Tag.GenericValue;
+                                        var formattedArray = "[\n" + string.Join(",\n", nrd.Properties.Select(p => $"\t{{\n\t\t\"{p.GenericValue}\": \"{p.GenericValue}\"\n\t}}")) + "\n\t]";
+                                        outputBuilder.AppendLine($"\t{key.Name.PlainText.Replace(" ", "")}: {formattedArray}");
+                                    }
+                                    else if (key.Tag.GetType().Name == "BoolProperty")
+                                    {
+                                        // how do i get the type of result when i do .GetType().Name it returns Boolean not Bool 
+                                        outputBuilder.AppendLine($"\t{key.Name.PlainText.Replace(" ", "")} = {result.ToLower()};");
                                     }
                                     else
-                                        if (key.Tag.GetType().Name == "BoolProperty")
                                     {
-                                        outputBuilder.Replace($"{key.Name}placenolder", $"{key.Tag.GenericValue.ToString().ToLower()}");
-                                    }
-                                    else
-                                    {
-                                        outputBuilder.AppendLine($"    {Utils.GetPrefix(key.GetType().Name)} {key.Name} = {key.Tag.GenericValue};");
+                                        outputBuilder.AppendLine($"\t{key.Name.PlainText.Replace(" ", "")} = {result};");
                                     }
                                 }
                             }
@@ -157,6 +201,7 @@ public static class Program
 
                 foreach (var function in functions)
                 {
+                    //FunctionName = function.Name.Replace(" ", "");
                     string argsList = "";
                     string returnFunc = "void";
                     foreach (FProperty property in function.ChildProperties)
@@ -171,7 +216,7 @@ public static class Program
                                   property.Name.ToString().StartsWith("Temp_")) || // removes useless args
                                   property.PropertyFlags.HasFlag(EPropertyFlags.Edit))
                         {
-                            argsList += $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || Utils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}{(property.PropertyFlags.HasFlag(EPropertyFlags.OutParm) ? "&" : string.Empty)} {property.Name}, ";
+                            argsList += $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || Utils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}{(property.PropertyFlags.HasFlag(EPropertyFlags.OutParm) ? "&" : string.Empty)} {property.Name.PlainText.Replace(" ", "")}, ";
                         }
                     }
                     argsList = argsList.TrimEnd(',', ' ');
@@ -191,7 +236,7 @@ public static class Program
                     }
                 }
 
-                outputBuilder.Append("\n\n}\n");
+                outputBuilder.Append("\n\n}");
             }
             else if (verseTest)
             {
@@ -322,6 +367,24 @@ public static class Program
                 Console.WriteLine("No Blueprint Found nor Verse set");
                 return;
             }
+
+            var commonOffsets = statementIndices.Select(si => si.Index).Intersect(jumpCodeOffsets).ToList();
+            if (commonOffsets.Any())
+            {
+                foreach (var offset in commonOffsets)
+                {
+                    var statementInfo = statementIndices.First(si => si.Index == offset);
+                    var LineIndex = statementInfo.LineNum;
+
+                    string[] lines = Regex.Split(outputBuilder.ToString().Trim(), @"\r?\n|\r");
+
+                    outputBuilder = new StringBuilder(string.Join(Environment.NewLine, lines.Take(LineIndex).Concat(new[] { "\t\tLabel_" + offset.ToString() + ":" }).Concat(lines.Skip(LineIndex))
+                    ));
+
+                }
+            }
+        
+
             int targetIndex = outputBuilder.ToString().IndexOf("placenolder");
             string pattern = $@"\w+placenolder";
             string updatedOutput = Regex.Replace(outputBuilder.ToString(), pattern, "null");
@@ -387,7 +450,6 @@ public static class Program
             }
         }
     }
-
     private static void ProcessExpression(EExprToken token, KismetExpression expression, StringBuilder outputBuilder, bool isParameter = false)
     {
         switch (token)
@@ -396,8 +458,8 @@ public static class Program
                 {
                     EX_LetValueOnPersistentFrame op = (EX_LetValueOnPersistentFrame) expression;
                     EX_VariableBase opp = (EX_VariableBase) op.AssignmentExpression;
-                    var nerd = string.Join('.', op.DestinationProperty.New.Path.Select(n => n.Text));
-                    var nerdd = string.Join('.', opp.Variable.New.Path.Select(n => n.Text));
+                    var nerd = string.Join('.', op.DestinationProperty.New.Path.Select(n => n.Text)).Replace(" ", "");
+                    var nerdd = string.Join('.', opp.Variable.New.Path.Select(n => n.Text)).Replace(" ", "");
                     
                     if (!isParameter)
                     {
@@ -410,7 +472,6 @@ public static class Program
                     break;
                 }
             case EExprToken.EX_LocalFinalFunction:
-            case EExprToken.EX_FinalFunction:
                 {
                     EX_FinalFunction op = (EX_FinalFunction) expression;
                     KismetExpression[] opp = (KismetExpression[]) op.Parameters;
@@ -429,7 +490,8 @@ public static class Program
 
                     for (int i = 0; i < opp.Length; i++)
                     {
-                        if (opp.Length > 4) outputBuilder.Append("\n    ");
+                        if (opp.Length > 4)
+                            outputBuilder.Append("\n\t\t");
                         ProcessExpression(opp[i].Token, opp[i], outputBuilder, true);
                         if (i < opp.Length - 1)
                         {
@@ -446,6 +508,43 @@ public static class Program
                     }
                     break;
                 }
+            case EExprToken.EX_FinalFunction:
+                {
+                    EX_FinalFunction op = (EX_FinalFunction) expression;
+                    KismetExpression[] opp = (KismetExpression[]) op.Parameters;
+                    if (isParameter)
+                    {
+                        outputBuilder.Append($"{op.StackNode.Name.Replace(" ", "")}(");
+                    }
+                    else if (opp.Length < 1)
+                    {
+                        outputBuilder.Append($"\t\t{op?.StackNode?.Name.Replace(" ", "")}(");
+                    }
+                    else
+                    {
+                        outputBuilder.Append($"\t\t{op?.StackNode?.Name.Replace(" ", "")}(");//{Utils.GetPrefix(op?.StackNode?.ResolvedObject?.Outer?.GetType()?.Name)}
+                    }
+
+                    for (int i = 0; i < opp.Length; i++)
+                    {
+                        if (opp.Length > 4)
+                            outputBuilder.Append("\n\t\t");
+                        ProcessExpression(opp[i].Token, opp[i], outputBuilder, true);
+                        if (i < opp.Length - 1)
+                        {
+                            outputBuilder.Append(", ");
+                        }
+                    }
+                    if (isParameter)
+                    {
+                        outputBuilder.Append($")");
+                    }
+                    else
+                    {
+                        outputBuilder.Append($");\n\n");
+                    }
+                    break;
+                }
             case EExprToken.EX_CallMath:
                 {
                     EX_FinalFunction op = (EX_FinalFunction) expression;
@@ -453,7 +552,7 @@ public static class Program
                     outputBuilder.Append($"{Utils.GetPrefix(op.StackNode.ResolvedObject.Outer.GetType().Name)}{op.StackNode.ResolvedObject.Outer.Name.ToString().Replace(" ", "")}::{op.StackNode.Name}(");
                     for (int i = 0; i < opp.Length; i++)
                     {
-                        if (opp.Length > 4) outputBuilder.Append("\n    ");
+                        if (opp.Length > 4) outputBuilder.Append("\n\t\t");
                         ProcessExpression(opp[i].Token, opp[i], outputBuilder, true); // if context it fails and does ;\n\n
                         if (i < opp.Length - 1)
                         {
@@ -486,7 +585,7 @@ public static class Program
                     }
                     for (int i = 0; i < opp.Length; i++)
                     {
-                        if (opp.Length > 4) outputBuilder.Append("\n    ");
+                        if (opp.Length > 4) outputBuilder.Append("\n\t\t");
 
                         ProcessExpression(opp[i].Token, opp[i], outputBuilder, true);
                         if (i < opp.Length - 1)
@@ -524,7 +623,7 @@ public static class Program
                 {
                     EX_PopExecutionFlowIfNot op = (EX_PopExecutionFlowIfNot) expression;
                     outputBuilder.Append("\t\tif (!");
-                    ProcessExpression(op.BooleanExpression.Token, op.BooleanExpression, outputBuilder);
+                    ProcessExpression(op.BooleanExpression.Token, op.BooleanExpression, outputBuilder, true);
                     outputBuilder.Append(") \r\n");
                     outputBuilder.Append($"\t\t    FlowStack.Pop();\n\n");
                     break;
@@ -700,7 +799,7 @@ public static class Program
                             outputBuilder.Append("\t\t{\n");
                             outputBuilder.Append("\t\t    ");
                             ProcessExpression(op.DefaultTerm.Token, op.DefaultTerm, outputBuilder);
-                            outputBuilder.Append("\n    }\n\n");
+                            outputBuilder.Append("\n\t\t}\n\n");
                         }
 
                         outputBuilder.Append("}\n");
@@ -778,7 +877,7 @@ public static class Program
                     {
                         outputBuilder.Append("\")");
                     }
-                    elseEX_Context
+                    else
                     {
                         outputBuilder.Append("\")");
                     }
@@ -814,8 +913,8 @@ public static class Program
                         EX_Context opp = (EX_Context) op.Delegate;
                         outputBuilder.Append("\t\t");
                         ProcessExpression(op.Delegate.Token, op.Delegate, outputBuilder, true);
-                        outputBuilder.Append("->");
-                        ProcessExpression(opp.ContextExpression.Token, opp.ContextExpression, outputBuilder);
+                        //outputBuilder.Append("->");
+                        //ProcessExpression(opp.ContextExpression.Token, opp.ContextExpression, outputBuilder);
                         outputBuilder.Append(".AddDelegate(");
                         ProcessExpression(op.DelegateToAdd.Token, op.DelegateToAdd, outputBuilder);
                         outputBuilder.Append($");\n\n");
@@ -860,7 +959,7 @@ public static class Program
                         for (int i = 0; i < opp.Length; i++)
                         {
                             if (opp.Length > 4)
-                                outputBuilder.Append("\n    ");
+                                outputBuilder.Append("\n\t\t");
                             ProcessExpression(opp[i].Token, opp[i], outputBuilder, true);
                             if (i < opp.Length - 1)
                             {
@@ -880,7 +979,7 @@ public static class Program
                         for (int i = 0; i < opp.Length; i++)
                         {
                             if (opp.Length > 4)
-                                outputBuilder.Append("\n    ");
+                                outputBuilder.Append("\n\t\t");
                             ProcessExpression(opp[i].Token, opp[i], outputBuilder, true);
                             if (i < opp.Length - 1)
                             {
@@ -961,8 +1060,9 @@ public static class Program
             case EExprToken.EX_JumpIfNot:
                 {
                     EX_JumpIfNot op = (EX_JumpIfNot)expression;
+                    jumpCodeOffsets.Add((int)op.CodeOffset);
                     outputBuilder.Append("\t\tif (!");
-                    ProcessExpression(op.BooleanExpression.Token, op.BooleanExpression, outputBuilder);
+                    ProcessExpression(op.BooleanExpression.Token, op.BooleanExpression, outputBuilder, true);
                     outputBuilder.Append(") \r\n");
                     outputBuilder.Append("\t\t    goto Label_");
                     outputBuilder.Append(op.CodeOffset);
@@ -972,6 +1072,7 @@ public static class Program
             case EExprToken.EX_Jump:
                 {
                     EX_Jump op = (EX_Jump)expression;
+                    jumpCodeOffsets.Add((int)op.CodeOffset);
                     outputBuilder.Append($"\t\tgoto Label_{op.CodeOffset};\n\n");
                     break;
                 }
@@ -1011,7 +1112,7 @@ public static class Program
                 {
                     EX_Return op = (EX_Return)expression;
                     bool tocheck = op.ReturnExpression.Token == EExprToken.EX_Nothing;
-                    outputBuilder.Append($"\n\t\treturn");
+                    outputBuilder.Append($"\t\treturn");
                     if (!tocheck) outputBuilder.Append(" ");
                     ProcessExpression(op.ReturnExpression.Token, op.ReturnExpression, outputBuilder, true);
                     outputBuilder.AppendLine(";\n\n");
@@ -1045,9 +1146,16 @@ public static class Program
                 }
             case EExprToken.EX_Vector3fConst:
                 {
-                    EX_Vector3fConst op = (EX_Vector3fConst)expression;
+                    EX_Vector3fConst op = (EX_Vector3fConst) expression;
                     FVector value = op.Value;
                     outputBuilder.Append($"FVector3f({value.X}, {value.Y}, {value.Z})");
+                    break;
+                }
+            case EExprToken.EX_TransformConst:
+                {
+                    EX_TransformConst op = (EX_TransformConst) expression;
+                    FTransform value = op.Value;
+                    outputBuilder.Append($"FTransform(FQuat({value.Rotation.X}, {value.Rotation.Y}, {value.Rotation.Z}, {value.Rotation.W}), FVector({value.Translation.X}, {value.Translation.Y}, {value.Translation.Z}), FVector({value.Scale3D.X}, {value.Scale3D.Y}, {value.Scale3D.Z}))");
                     break;
                 }
             case EExprToken.EX_IntConst:
@@ -1128,5 +1236,6 @@ public static class Program
                 outputBuilder.Append($"{token}");
                 break;
         }
+        statementIndices.Add(new StatementInfo { Index = expression.StatementIndex, LineNum = Regex.Split(outputBuilder.ToString().Trim(), @"\r?\n|\r").Length });
     }
 }

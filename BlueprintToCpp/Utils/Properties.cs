@@ -6,6 +6,7 @@ using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Versions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 public class Config
 {
     public string PakFolderPath { get; set; }
@@ -83,13 +84,13 @@ public static class Utils
                 _ => objct.PropertyClass?.Name ?? "UNKNOWN"
             },
             FEnumProperty enm => enm.Enum?.Name.ToString() ?? "Enum",
-            FSetProperty set => $"Set<{GetPropertyType(set.ElementProp)}>",
+            FSetProperty set => $"TSet<{GetPrefix(set.ElementProp.GetType().Name)}{GetPropertyType(set.ElementProp)}{(set.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || set.PropertyFlags.HasFlag(EPropertyFlags.ContainsInstancedReference) ? "*" : string.Empty)}>",
             FByteProperty bt => bt.Enum.ResolvedObject?.Name.Text ?? "Byte",
             FInterfaceProperty intrfc => $"{intrfc.InterfaceClass.Name} interface",
             FStructProperty strct => strct.Struct.ResolvedObject?.Name.Text ?? "Struct",
             FFieldPathProperty fieldPath => $"{fieldPath.PropertyClass.Text} field path",
             FDelegateProperty dlgt => $"{dlgt.SignatureFunction?.Name ?? "UNKNOWN"} (Delegate)",
-            FMapProperty map => $"TMap<{GetPropertyType(map.KeyProp)}, {GetPropertyType(map.ValueProp)}>",
+            FMapProperty map => $"TMap<{GetPrefix(map.ValueProp.GetType().Name)}{GetPropertyType(map.KeyProp)}, {GetPrefix(map.ValueProp.GetType().Name)}{GetPropertyType(map.ValueProp)}{(map.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || map.PropertyFlags.HasFlag(EPropertyFlags.ContainsInstancedReference) ? "*" : string.Empty)}>",
             FMulticastDelegateProperty mdlgt => $"{mdlgt.SignatureFunction?.Name ?? "UNKNOWN"} (MulticastDelegateProperty)",
             FMulticastInlineDelegateProperty midlgt => $"{midlgt.SignatureFunction?.Name ?? "UNKNOWN"} (MulticastInlineDelegateProperty)",
             FArrayProperty array => $"TArray<{GetPrefix(array.Inner.GetType().Name)}{GetPropertyType(array.Inner)}{(array.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || array.PropertyFlags.HasFlag(EPropertyFlags.ContainsInstancedReference) ? "*" : string.Empty)}>",
