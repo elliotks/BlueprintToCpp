@@ -1,76 +1,36 @@
-using System.Net;
 using System.Text;
-using Newtonsoft.Json.Linq;
-using CUE4Parse.Encryption.Aes;
 using CUE4Parse.FileProvider;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Objects.Engine;
-using CUE4Parse.UE4.Versions;
-using CUE4Parse.Compression;
-using CUE4Parse.MappingsProvider;
 using CUE4Parse.UE4.Kismet;
 using CUE4Parse.UE4.Assets;
-using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Assets.Exports;
 using System.Text.RegularExpressions;
-using Serilog;
-using Serilog.Sinks.SystemConsole.Themes;
 using CUE4Parse.UE4.Assets.Exports.Verse;
+using Main.Service;
+using Serilog;
 
 namespace Main;
 
 public static class Program
 {
-    static bool verseTest = false;
+    private static bool verseTest = false;
+    private static DefaultFileProvider Provider => ApplicationService.CUE4Parse.Provider;
+
     public static async Task Main(string[] args)
     {
         try
         {
-#if DEBUG
-            Log.Logger = new LoggerConfiguration().WriteTo.Console(theme: AnsiConsoleTheme.Literate).CreateLogger();
-#endif
-            var config = Utils.LoadConfig("config.json");
+            await ApplicationService.Initialize().ConfigureAwait(false);
 
-            string pakFolderPath = config.PakFolderPath;
-            if (string.IsNullOrEmpty(pakFolderPath) || pakFolderPath.Length < 1) {
-                Console.WriteLine("Please provide a pak folder path in the config.json file.");
-                return;
-            }
-
-            string blueprintPath = config.BlueprintPath;
-            if (string.IsNullOrEmpty(blueprintPath) || blueprintPath.Length < 1)
+            var package = await Provider.LoadPackageAsync("").ConfigureAwait(false);
+            if (package is not AbstractUePackage abstractPackage)
             {
-                Console.WriteLine("Please provide a blueprint path in the config.json file.");
+                Log.Error("Package is not of type AbstractUePackage but instead of type '{0}'", package.GetType());
                 return;
             }
 
-            string usmapPath = config.UsmapPath;
-            if (string.IsNullOrEmpty(usmapPath) || usmapPath.Length < 1)
-            {
-                Console.WriteLine("Please provide a usmap path in the config.json file.");
-                return;
-            }
-
-            string oodlePath = config.OodlePath;
-            if (string.IsNullOrEmpty(oodlePath) || oodlePath.Length < 1)
-            {
-                Console.WriteLine("Please provide a oodle path in the config.json file.");
-                return;
-            }
-
-            EGame version = config.Version;
-            if (string.IsNullOrEmpty(version.ToString()) || version.ToString().Length < 1)
-            {
-                Console.WriteLine("Please provide a UE version in the config.json file.");
-                return;
-            }
-
-            var provider = InitializeProvider(pakFolderPath, usmapPath, oodlePath, version);
-            provider.ReadScriptData = true;
-            await LoadAesKeysAsync(provider, "https://fortnitecentral.genxgames.gg/api/v1/aes"); // allow users to change the aes url?
-
-            var package = provider.LoadPackage(blueprintPath) as AbstractUePackage;
             var outputBuilder = new StringBuilder();
 
             string mainClass = string.Empty;
@@ -337,57 +297,6 @@ public static class Program
         }
     }
 
-    static DefaultFileProvider InitializeProvider(string pakFolderPath, string usmapPath, string oodlePath, EGame version)
-    {
-        OodleHelper.Initialize(oodlePath);
-
-        var provider = new DefaultFileProvider(pakFolderPath, SearchOption.TopDirectoryOnly, true, new VersionContainer(version))
-        {
-            MappingsContainer = new FileUsmapTypeMappingsProvider(usmapPath)
-        };
-        provider.Initialize();
-
-        return provider;
-    }
-
-    static async Task LoadAesKeysAsync(DefaultFileProvider provider, string aesUrl)
-    {
-        string cacheFilePath = "aes.json";
-
-        if (File.Exists(cacheFilePath))
-        {
-            string cachedAesJson = await File.ReadAllTextAsync(cacheFilePath);
-            LoadAesKeysFromJson(provider, cachedAesJson);
-        }
-        else
-        {
-            using var webClient = new WebClient();
-            string aesJson = await webClient.DownloadStringTaskAsync(aesUrl);
-            await File.WriteAllTextAsync(cacheFilePath, aesJson);
-            LoadAesKeysFromJson(provider, aesJson);
-        }
-
-        provider.PostMount();
-        provider.LoadLocalization(ELanguage.English);
-    }
-
-    private static void LoadAesKeysFromJson(DefaultFileProvider provider, string aesJson)
-    {
-        var aesData = JObject.Parse(aesJson);
-        string mainKey = aesData["mainKey"]?.ToString() ?? string.Empty;
-        provider.SubmitKey(new FGuid(), new FAesKey(mainKey));
-
-        foreach (var key in aesData["dynamicKeys"]?.ToObject<JArray>() ?? new JArray())
-        {
-            var guid = key["guid"]?.ToString();
-            var aesKey = key["key"]?.ToString();
-            if (!string.IsNullOrEmpty(guid) && !string.IsNullOrEmpty(aesKey))
-            {
-                provider.SubmitKey(new FGuid(guid), new FAesKey(aesKey));
-            }
-        }
-    }
-
     private static void ProcessExpression(EExprToken token, KismetExpression expression, StringBuilder outputBuilder, bool isParameter = false)
     {
         switch (token)
@@ -398,7 +307,7 @@ public static class Program
                     EX_VariableBase opp = (EX_VariableBase) op.AssignmentExpression;
                     var nerd = string.Join('.', op.DestinationProperty.New.Path.Select(n => n.Text));
                     var nerdd = string.Join('.', opp.Variable.New.Path.Select(n => n.Text));
-                    
+
                     if (!isParameter)
                     {
                         outputBuilder.Append($"\t\t{(nerd.Contains("K2Node_") ? $"UberGraphFrame->{nerd}" : nerd)} = {nerdd};\n\n"); // hardcoded
