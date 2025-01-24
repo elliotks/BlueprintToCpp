@@ -31,7 +31,7 @@ public static class ApplicationService
         {
             AppSettings.Current.GameVersion = AnsiConsole.Prompt(new SelectionPrompt<EGame>()
                 .Title("Please select your [green]game version[/]:")
-                .AddChoices(Enum.GetValues<EGame>().OrderBy(x => x)));
+                .AddChoices(Enum.GetNames<EGame>().OrderByDescending(name => name).Select(name => Enum.Parse<EGame>(name)).ToList()));
         }
     }
 
