@@ -32,9 +32,9 @@ public static class ApplicationService
             AppSettings.Current.GameVersion = AnsiConsole.Prompt(new SelectionPrompt<EGame>()
                 .Title("Please select your [green]game version[/]:")
                 .AddChoices(Enum.GetValues<EGame>()
-            .GroupBy(value => (int) value)
+            .GroupBy(value => (int)value)
             .Select(group => group.First())
-            .OrderBy(value => (int) value == ((int) value & ~0xF))));
+            .OrderBy(value => (int)value == ((int)value & ~0xF))));
         }
 
         if (string.IsNullOrWhiteSpace(AppSettings.Current.UsmapPath))
