@@ -6,7 +6,6 @@ using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Versions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 public class Config
 {
     public string PakFolderPath { get; set; }
@@ -48,7 +47,7 @@ public static class Utils
         {
             "FNameProperty" or "FPackageIndex" or "FTextProperty" or "FStructProperty" => "F",
             "UBlueprintGeneratedClass" or "FActorProperty" => "A",
-            "ResolvedScriptObject" or "FSoftObjectProperty" or "FObjectProperty" => "U",
+            "ResolvedScriptObject" or "ResolvedLoadedObject" or "FSoftObjectProperty" or "FObjectProperty" => "U",
             _ => ""
         };
     }
@@ -67,8 +66,7 @@ public static class Utils
 
     public static string GetPropertyType(FProperty? property)
     {
-        if (property is null)
-            return "None";
+        if (property is null) return "None";
 
         return property switch
         {

@@ -13,16 +13,18 @@ using CUE4Parse.UE4.Assets;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Assets.Exports;
+using CUE4Parse.UE4.Assets.Exports.Verse;
+using CUE4Parse.UE4.Assets.Objects;
 using System.Text.RegularExpressions;
 using Serilog;
 using Serilog.Sinks.SystemConsole.Themes;
-using CUE4Parse.UE4.Assets.Exports.Verse;
-using CUE4Parse.UE4.Assets.Objects;
+using CUE4Parse.UE4.Assets.Objects.Properties;
 namespace Main;
 
 public static class Program
 {
-    static bool verseTest = false;
+    private static bool verseTest = false;
+
     private class StatementInfo
     {
         public int Index { get; set; }
@@ -30,14 +32,20 @@ public static class Program
     }
     private static List<StatementInfo> statementIndices = new List<StatementInfo>();
     private static List<int> jumpCodeOffsets = new List<int>();
+    private static string? ProcessTextProperty(FKismetPropertyPointer property)
+    {
+        if (property.New is null)
+            return null;
+        return string.Join('.', property.New.Path.Select(n => n.Text)).Replace(" ", "");
+    }
 
     public static async Task Main(string[] args)
     {
         try
         {
-#if DEBUG
-            Log.Logger = new LoggerConfiguration().WriteTo.Console(theme: AnsiConsoleTheme.Literate).CreateLogger();
-#endif
+            #if DEBUG
+                Log.Logger = new LoggerConfiguration().WriteTo.Console(theme: AnsiConsoleTheme.Literate).CreateLogger();
+            #endif
             var config = Utils.LoadConfig("config.json");
 
             string pakFolderPath = config.PakFolderPath;
@@ -111,31 +119,52 @@ public static class Program
 
                                 if (outputBuilder.ToString().Contains(placeholder))
                                 {
-                                    if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
+                                    if (key.Tag.GenericValue is FScriptStruct structTag)
+                                    {
+                                        if (structTag.StructType is FVector vector)
+                                        {
+                                            outputBuilder.Replace(placeholder, $"\tFVector({vector.X}, {vector.Y}, {vector.Z})");
+                                        }
+                                        else if (structTag.StructType is FStructFallback structFall)
+                                        {
+                                            structFall.Properties.ForEach(prop =>
+                                            {
+                                                outputBuilder.Replace(placeholder, $"\"{prop.Tag.GenericValue.ToString()}\"");
+                                            });
+                                        } else
+                                        {
+                                            outputBuilder.Replace(placeholder, $"\"{result}\"");
+                                        }
+                                    }
+                                    else if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
                                     {
                                         outputBuilder.Replace(placeholder, $"\"{result}\"");
                                     }
-                                    else if (key.Tag.GetType().Name == "SetProperty")
+                                    else if (key.Tag.GenericValue is UScriptSet Set)
                                     {
-                                        var nrd = (UScriptSet) key.Tag.GenericValue;
-                                        var formattedSet = "[\n" + string.Join(",\n", nrd.Properties.Select((p, i) => $"\t\"{p.GenericValue}\"").ToArray()) + "\n\t]";
+                                        var formattedSet = "[\n" + string.Join(",\n", Set.Properties.Select(p => $"\t\"{p.GenericValue}\"")) + "\n\t]";
                                         outputBuilder.Replace(placeholder, formattedSet);
                                     }
-                                    else if (key.Tag.GetType().Name == "MapProperty")
+                                    else if (key.Tag.GenericValue is UScriptMap Map)
                                     {
-                                        var nrd = (UScriptMap) key.Tag.GenericValue;
-                                        var formattedMap = "[\n" + string.Join(",\n", nrd.Properties.Select(kvp => $"\t{{\n\t\t\"{kvp.Key}\": \"{kvp.Value}\"\n\t}}")) + "\n\t]";
+                                        var formattedMap = "[\n" + string.Join(",\n", Map.Properties.Select(kvp => $"\t{{\n\t\t\"{kvp.Key}\": \"{kvp.Value}\"\n\t}}")) + "\n\t]";
                                         outputBuilder.Replace(placeholder, formattedMap);
                                     }
-                                    else if (key.Tag.GetType().Name == "ArrayProperty")
+                                    else if (key.Tag.GenericValue is UScriptArray Array)
                                     {
-                                        var nrd = (UScriptArray) key.Tag.GenericValue;
-                                        var formattedArray = "[\n" + string.Join(",\n", nrd.Properties.Select(p => $"\t{{\n\t\t\"{p.GenericValue}\": \"{p.GenericValue}\"\n\t}}")) + "\n\t]"; // fix this
-                                        outputBuilder.AppendLine($"\t{key.Name}: {formattedArray}");
+                                        var formattedArray = "[\n" + string.Join(",\n", Array.Properties.Select(p =>
+                                        {
+                                            if (p.GenericValue is FScriptStruct structInArray && structInArray.StructType is FVector vector)
+                                            {
+                                                return $"FVector({vector.X}, {vector.Y}, {vector.Z})";
+                                            }
+                                            return $"\t\t\"{p.GenericValue}\"";
+                                        })) + "\n\t]";
+                                        outputBuilder.AppendLine($"\t{key.Name.PlainText}: {formattedArray}");
                                     }
-                                    else if (key.Tag.GetType().Name == "BoolProperty")
+                                    else if (key.Tag.GenericValue is bool boolResult)
                                     {
-                                        outputBuilder.Replace(placeholder, result.ToLower());
+                                        outputBuilder.Replace(placeholder, boolResult.ToString().ToLower());
                                     }
                                     else
                                     {
@@ -144,38 +173,56 @@ public static class Program
                                 }
                                 else
                                 {
-                                    if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "StructProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
-                                    {// i honestly dislike AppendLine using Append is better in my preference
+                                    if (key.Tag.GenericValue is FScriptStruct structTag)
+                                    {
+                                        if (structTag.StructType is FVector vector)
+                                        {
+                                            outputBuilder.AppendLine($"\t{key.Name.PlainText.Replace(" ", "")} = {{\n\t\t\"X\": {vector.X},\n\t\t\"Y\": {vector.Y},\n\t\t\"Z\": {vector.Z}\n\t}};");
+                                        }
+                                        else
+                                        {
+                                            //Console.WriteLine(key.Name);
+                                            //Console.WriteLine(structTag.StructType);
+                                           // Console.WriteLine(key.Tag.GetType().Name);
+                                            outputBuilder.AppendLine($"\t{key.Name.PlainText.Replace(" ", "")} = \"{result}\";");
+                                        }
+                                    }
+                                    else if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
+                                    {
                                         outputBuilder.AppendLine($"\t{key.Name.PlainText.Replace(" ", "")} = \"{result}\";");
                                     }
-                                    else if (key.Tag.GetType().Name == "SetProperty")
+                                    else if (key.Tag.GenericValue is UScriptSet Set)
                                     {
-                                        var nrd = (UScriptSet) key.Tag.GenericValue;
-                                        var formattedSet = "[\n" + string.Join(",\n", nrd.Properties.Select((p, i) => $"\t\"{p.GenericValue}\"").ToArray()) + "\n\t]";
+                                        var formattedSet = "[\n" + string.Join(",\n", Set.Properties.Select(p => $"\t\"{p.GenericValue}\"")) + "\n\t]";
                                         outputBuilder.AppendLine($"\t{key.Name.PlainText.Replace(" ", "")}: {formattedSet}");
                                     }
-                                    else if (key.Tag.GetType().Name == "MapProperty")
+                                    else if (key.Tag.GenericValue is UScriptMap Map)
                                     {
-                                        var nrd = (UScriptMap) key.Tag.GenericValue;
-                                        var formattedMap = "[\n" + string.Join(",\n", nrd.Properties.Select(kvp => $"\t{{\n\t\t\"{kvp.Key}\": \"{kvp.Value}\"\n\t}}")) + "\n\t]";
+                                        var formattedMap = "[\n" + string.Join(",\n", Map.Properties.Select(kvp => $"\t{{\n\t\t\"{kvp.Key}\": \"{kvp.Value}\"\n\t}}")) + "\n\t]";
                                         outputBuilder.AppendLine($"\t{key.Name.PlainText.Replace(" ", "")}: {formattedMap}");
                                     }
-                                    else if (key.Tag.GetType().Name == "ArrayProperty")
+                                    else if (key.Tag.GenericValue is UScriptArray Array)
                                     {
-                                        var nrd = (UScriptArray) key.Tag.GenericValue;
-                                        var formattedArray = "[\n" + string.Join(",\n", nrd.Properties.Select(p => $"\t{{\n\t\t\"{p.GenericValue}\": \"{p.GenericValue}\"\n\t}}")) + "\n\t]";
+                                        var formattedArray = "[\n" + string.Join(",\n", Array.Properties.Select(p =>
+                                        {
+                                            if (p.GenericValue is FScriptStruct structInArray && structInArray.StructType is FVector vectorInArray)
+                                            {
+                                                return $"\t{{\n\t\t\"X\": {vectorInArray.X},\n\t\t\"Y\": {vectorInArray.Y},\n\t\t\"Z\": {vectorInArray.Z}\n\t}}";
+                                            }
+                                            return $"\t\t\"{p.GenericValue}\"";
+                                        })) + "\n\t]";
                                         outputBuilder.AppendLine($"\t{key.Name.PlainText.Replace(" ", "")}: {formattedArray}");
                                     }
-                                    else if (key.Tag.GetType().Name == "BoolProperty")
+                                    else if (key.Tag.GenericValue is bool boolResult)
                                     {
-                                        // how do i get the type of result when i do .GetType().Name it returns Boolean not Bool 
-                                        outputBuilder.AppendLine($"\t{key.Name.PlainText.Replace(" ", "")} = {result.ToLower()};");
+                                        outputBuilder.AppendLine($"\t{key.Name.PlainText.Replace(" ", "")} = {boolResult.ToString().ToLower()};");
                                     }
                                     else
                                     {
                                         outputBuilder.AppendLine($"\t{key.Name.PlainText.Replace(" ", "")} = {result};");
                                     }
                                 }
+
                             }
                         }
                         else
@@ -452,18 +499,19 @@ public static class Program
     }
     private static void ProcessExpression(EExprToken token, KismetExpression expression, StringBuilder outputBuilder, bool isParameter = false)
     {
+        statementIndices.Add(new StatementInfo { Index = expression.StatementIndex, LineNum = Regex.Split(outputBuilder.ToString().Trim(), @"\r?\n|\r").Length });
         switch (token)
         {
             case EExprToken.EX_LetValueOnPersistentFrame:
                 {
                     EX_LetValueOnPersistentFrame op = (EX_LetValueOnPersistentFrame) expression;
                     EX_VariableBase opp = (EX_VariableBase) op.AssignmentExpression;
-                    var nerd = string.Join('.', op.DestinationProperty.New.Path.Select(n => n.Text)).Replace(" ", "");
-                    var nerdd = string.Join('.', opp.Variable.New.Path.Select(n => n.Text)).Replace(" ", "");
+                    var nerd = ProcessTextProperty(op.DestinationProperty);
+                    var nerdd = ProcessTextProperty(opp.Variable);
                     
                     if (!isParameter)
                     {
-                        outputBuilder.Append($"\t\t{(nerd.Contains("K2Node_") ? $"UberGraphFrame->{nerd}" : nerd)} = {nerdd};\n\n"); // hardcoded
+                        outputBuilder.Append($"\t\t{(nerd.Contains("K2Node_") ? $"UberGraphFrame->{nerd}" : nerd)} = {nerdd};\n\n"); // hardcoded but works
                     }
                     else
                     {
@@ -553,7 +601,7 @@ public static class Program
                     for (int i = 0; i < opp.Length; i++)
                     {
                         if (opp.Length > 4) outputBuilder.Append("\n\t\t");
-                        ProcessExpression(opp[i].Token, opp[i], outputBuilder, true); // if context it fails and does ;\n\n
+                        ProcessExpression(opp[i].Token, opp[i], outputBuilder, true);
                         if (i < opp.Length - 1)
                         {
                             outputBuilder.Append(", ");
@@ -609,13 +657,12 @@ public static class Program
                     if (op.CodeOffsetExpression is EX_VariableBase)
                     {
                         EX_VariableBase opp = (EX_VariableBase) op.CodeOffsetExpression;
-                        outputBuilder.AppendLine($"\t\tgoto {string.Join('.', ((EX_VariableBase) op.CodeOffsetExpression).Variable.New.Path.Select(n => n.Text))};\n");
+                        outputBuilder.AppendLine($"\t\tgoto {ProcessTextProperty(((EX_VariableBase) op.CodeOffsetExpression).Variable)};\n");
                     }
                     else
                     {
                         EX_CallMath opp = (EX_CallMath) op.CodeOffsetExpression;
                         ProcessExpression(opp.Token, opp, outputBuilder, true);
-                        //outputBuilder.AppendLine($"\t\tgoto {string.Join('.', ((EX_VariableBase) op.CodeOffsetExpression).Variable.New.Path.Select(n => n.Text))};\n");
                     }
                     break;
                 }
@@ -674,7 +721,7 @@ public static class Program
                 {
                     EX_SetArray op = (EX_SetArray) expression;
                     outputBuilder.Append("\t\t");
-                    ProcessExpression(op.AssigningProperty.Token, op.AssigningProperty, outputBuilder); // if TArray is a var it fails
+                    ProcessExpression(op.AssigningProperty.Token, op.AssigningProperty, outputBuilder);
                     outputBuilder.Append(" = ");
                     outputBuilder.Append("TArray {");
                     for (int i = 0; i < op.Elements.Length; i++)
@@ -815,12 +862,6 @@ public static class Program
                     outputBuilder.Append("]");
                     break;
                 }
-            case EExprToken.EX_BitFieldConst:
-                {
-                    EX_BitFieldConst op = (EX_BitFieldConst)expression;
-                    outputBuilder.Append(op.ConstValue);
-                    break;
-                }
             case EExprToken.EX_MetaCast:
             case EExprToken.EX_DynamicCast:
             case EExprToken.EX_ObjToInterfaceCast:
@@ -828,7 +869,7 @@ public static class Program
             case EExprToken.EX_InterfaceToObjCast:
                 {
                     EX_CastBase op = (EX_CastBase)expression;
-                    outputBuilder.Append($"Cast<U{op.ClassPtr.Name}*>(");
+                    outputBuilder.Append($"Cast<U{op.ClassPtr.Name}*>(");// m?
                     ProcessExpression(op.Target.Token, op.Target, outputBuilder, true);
                     outputBuilder.Append(")");
                     break;
@@ -851,20 +892,26 @@ public static class Program
             case EExprToken.EX_ObjectConst:
                 {
                     EX_ObjectConst op = (EX_ObjectConst)expression;
-                    outputBuilder.Append("FindObject<");
+                    if (!isParameter)
+                    {
+                        outputBuilder.Append("\t\tFindObject<");
+                    }
+                    else
+                    {
+                        outputBuilder.Append("FindObject<");
+                    }
                     string classString = op?.Value?.ResolvedObject?.Class?.ToString()?.Replace("'", "");
 
                     if (classString?.Contains(".") == true)
                     {
-                        outputBuilder.Append("U" + classString.Split(".")[1]);
+                        
+                        outputBuilder.Append(Utils.GetPrefix(op?.Value?.ResolvedObject?.Class.GetType().Name) + classString.Split(".")[1]);
                     }
                     else
                     {
-                        outputBuilder.Append("U" + classString); // renove hardcoded and sometimes incorrect
+                        outputBuilder.Append(Utils.GetPrefix(op?.Value?.ResolvedObject?.Class.GetType().Name) + classString);
                     }
                     outputBuilder.Append(">(\"");
-                    //Console.WriteLine(classString);
-                    //Console.WriteLine(op?.Value?.ResolvedObject?.Outer.ToString());
                     outputBuilder.Append(
                         op?.Value?.ResolvedObject?.Outer // sometimes incorrect
                             .ToString()
@@ -894,7 +941,7 @@ public static class Program
                     outputBuilder.Append($");\n\n");
                     break;
                 }
-                // all the delegate functions suck
+            // all the delegate functions suck
             case EExprToken.EX_AddMulticastDelegate:
                 {
                     EX_AddMulticastDelegate op = (EX_AddMulticastDelegate) expression;
@@ -931,10 +978,12 @@ public static class Program
                         outputBuilder.Append(".RemoveDelegate(");
                         ProcessExpression(op.DelegateToAdd.Token, op.DelegateToAdd, outputBuilder);
                         outputBuilder.Append($");\n\n");
-                    } else if (op.Delegate.Token != EExprToken.EX_Context)
+                    }
+                    else if (op.Delegate.Token != EExprToken.EX_Context)
                     {
                         Console.WriteLine("Issue: EX_RemoveMulticastDelegate missing info: ", op.StatementIndex);
-                    } else
+                    }
+                    else
                     {
                         EX_Context opp = (EX_Context) op.Delegate;
                         outputBuilder.Append("\t\t");
@@ -947,7 +996,15 @@ public static class Program
                     }
                     break;
                 }
-            case EExprToken.EX_CallMulticastDelegate: // everything here has been guessed not compared to actual UE but does work fine and displays all infomation
+            case EExprToken.EX_ClearMulticastDelegate: // this also
+                {
+                    EX_ClearMulticastDelegate op = (EX_ClearMulticastDelegate) expression;
+                        outputBuilder.Append("\t\t");
+                        ProcessExpression(op.DelegateToClear.Token, op.DelegateToClear, outputBuilder, true);
+                        outputBuilder.Append(".Clear();\n\n");
+                    break;
+                }
+            case EExprToken.EX_CallMulticastDelegate: // this also
                 {
                     EX_CallMulticastDelegate op = (EX_CallMulticastDelegate) expression;
                     KismetExpression[] opp = (KismetExpression[]) op.Parameters;
@@ -1077,37 +1134,31 @@ public static class Program
                     break;
                 }
             // Static expressions
+
+            case EExprToken.EX_TextConst:
+                if (expression is EX_TextConst textConst)
+                {
+                    if (textConst.Value is FScriptText scriptText)
+                    {
+
+                        if (scriptText.SourceString != null)
+                            ProcessExpression(scriptText.SourceString.Token, scriptText.SourceString, outputBuilder, true); // cursed sometimes will need to be correctly done
+                    }
+                    else
+                    {
+                        outputBuilder.Append(textConst.Value.ToString());
+                    }
+                }
+                break;
             case EExprToken.EX_StructMemberContext:
                 {
                     EX_StructMemberContext op = (EX_StructMemberContext)expression;
                     ProcessExpression(op.StructExpression.Token, op.StructExpression, outputBuilder);
                     outputBuilder.Append(".");
-                    outputBuilder.Append(string.Join('.', op.Property.New.Path.Select(n => n.Text)));
+                    outputBuilder.Append(ProcessTextProperty(op.Property));
                     break;
                 }
-            case EExprToken.EX_LocalVariable:
-            case EExprToken.EX_DefaultVariable:
-            case EExprToken.EX_InstanceVariable:
-            case EExprToken.EX_LocalOutVariable:
-            case EExprToken.EX_ClassSparseDataVariable:
-                {
-                    EX_VariableBase op = (EX_VariableBase)expression;
-                    outputBuilder.Append(string.Join('.', op.Variable.New.Path.Select(n => n.Text)).Replace(" ", ""));
-                    break;
-                }
-            case EExprToken.EX_SoftObjectConst:
-                {
-                    EX_SoftObjectConst op = (EX_SoftObjectConst)expression;
-                    ProcessExpression(op.Value.Token, op.Value, outputBuilder);
-                    break;
-                }
-            case EExprToken.EX_ByteConst:
-            case EExprToken.EX_IntConstByte:
-                {
-                    KismetExpression<byte> op = (KismetExpression<byte>)expression;
-                    outputBuilder.Append($"0x{op.Value.ToString("X")}");
-                    break;
-                }
+
             case EExprToken.EX_Return:
                 {
                     EX_Return op = (EX_Return)expression;
@@ -1116,18 +1167,6 @@ public static class Program
                     if (!tocheck) outputBuilder.Append(" ");
                     ProcessExpression(op.ReturnExpression.Token, op.ReturnExpression, outputBuilder, true);
                     outputBuilder.AppendLine(";\n\n");
-                    break;
-                }
-            case EExprToken.EX_DoubleConst:
-                {
-                    var value = ((EX_DoubleConst)expression).Value;
-                    outputBuilder.Append(value == (int)value ? (int)value : value.ToString("R"));
-                    break;
-                }
-            case EExprToken.EX_NameConst:
-                {
-                    EX_NameConst op = (EX_NameConst)expression;
-                    outputBuilder.Append($"\"{op.Value}\"");
                     break;
                 }
             case EExprToken.EX_RotationConst:
@@ -1158,84 +1197,42 @@ public static class Program
                     outputBuilder.Append($"FTransform(FQuat({value.Rotation.X}, {value.Rotation.Y}, {value.Rotation.Z}, {value.Rotation.W}), FVector({value.Translation.X}, {value.Translation.Y}, {value.Translation.Z}), FVector({value.Scale3D.X}, {value.Scale3D.Y}, {value.Scale3D.Z}))");
                     break;
                 }
-            case EExprToken.EX_IntConst:
-                {
-                    EX_IntConst op = (EX_IntConst) expression;
-                    outputBuilder.Append(op.Value.ToString());
-                    break;
-                }
-            case EExprToken.EX_PropertyConst:
-                {
-                    EX_PropertyConst op = (EX_PropertyConst) expression;
-                    outputBuilder.Append(string.Join('.', op.Property.New.Path.Select(n => n.Text)).Replace(" ", ""));
-                    break;
-                }
-            case EExprToken.EX_StringConst:
-                outputBuilder.Append($"\"{((EX_StringConst)expression).Value}\"");
+
+
+            case EExprToken.EX_LocalVariable:
+            case EExprToken.EX_DefaultVariable:
+            case EExprToken.EX_InstanceVariable:
+            case EExprToken.EX_LocalOutVariable:
+            case EExprToken.EX_ClassSparseDataVariable:
+                outputBuilder.Append(ProcessTextProperty(((EX_VariableBase) expression).Variable));
                 break;
-            case EExprToken.EX_Int64Const:
-                outputBuilder.Append(((EX_Int64Const)expression).Value.ToString());
-                break;
-            case EExprToken.EX_UInt64Const:
-                outputBuilder.Append(((EX_UInt64Const)expression).Value.ToString());
-                break;
-            case EExprToken.EX_SkipOffsetConst:
-                outputBuilder.Append(((EX_SkipOffsetConst)expression).Value.ToString());
-                break;
-            case EExprToken.EX_FloatConst:
-                outputBuilder.Append(((EX_FloatConst)expression).Value.ToString());
-                break;
-            case EExprToken.EX_TextConst:
-                if (expression is EX_TextConst textConst)
-                {
-                    if (textConst.Value is FScriptText scriptText)
-                    {
-                        ProcessExpression(scriptText.SourceString.Token, scriptText.SourceString, outputBuilder, true); // cursed sometimes so i'll add a name length just for now
-                    }
-                    else
-                    {
-                        outputBuilder.Append(textConst.Value.ToString());
-                    }
-                }
-                break;
-            case EExprToken.EX_UnicodeStringConst:
-                outputBuilder.Append(((EX_UnicodeStringConst)expression).Value);
-                break;
-            case EExprToken.EX_EndOfScript:
-            case EExprToken.EX_EndParmValue:
-                outputBuilder.AppendLine("\t}");
-                break;
-            case EExprToken.EX_NoObject:
-            case EExprToken.EX_NoInterface:
-                outputBuilder.Append("nullptr");
-                break;
-            case EExprToken.EX_IntOne:
-                outputBuilder.Append(1);
-                break;
-            case EExprToken.EX_True:
-                outputBuilder.Append("true");
-                break;
-            case EExprToken.EX_IntZero:
-                outputBuilder.Append(0);
-                break;
-            case EExprToken.EX_False:
-                outputBuilder.Append("false");
-                break;
-            case EExprToken.EX_Self:
-                outputBuilder.Append("this");
-                break;
-            case EExprToken.EX_Nothing:
-            case EExprToken.EX_Tracepoint:
-            case EExprToken.EX_PopExecutionFlow:
-            case EExprToken.EX_PushExecutionFlow:
-                //case EExprToken.EX_RemoveMulticastDelegate:// some here are unsupported
-                //case EExprToken.EX_ClearMulticastDelegate:
+
+            case EExprToken.EX_ByteConst: case EExprToken.EX_IntConstByte: outputBuilder.Append($"0x{((KismetExpression<byte>)expression).Value.ToString("X")}"); break;
+            case EExprToken.EX_SoftObjectConst: ProcessExpression(((EX_SoftObjectConst) expression).Value.Token, ((EX_SoftObjectConst) expression).Value, outputBuilder); break;
+            case EExprToken.EX_DoubleConst: outputBuilder.Append(((EX_DoubleConst) expression).Value == (int) ((EX_DoubleConst) expression).Value ? (int) ((EX_DoubleConst) expression).Value : ((EX_DoubleConst) expression).Value.ToString("R")); break;
+            case EExprToken.EX_NameConst: outputBuilder.Append($"\"{((EX_NameConst)expression).Value}\""); break;
+            case EExprToken.EX_IntConst: outputBuilder.Append(((EX_IntConst)expression).Value.ToString()); break;
+            case EExprToken.EX_PropertyConst: outputBuilder.Append(ProcessTextProperty(((EX_PropertyConst)expression).Property)); break;
+            case EExprToken.EX_StringConst: outputBuilder.Append($"\"{((EX_StringConst)expression).Value}\""); break;
+            case EExprToken.EX_Int64Const: outputBuilder.Append(((EX_Int64Const)expression).Value.ToString()); break;
+            case EExprToken.EX_UInt64Const: outputBuilder.Append(((EX_UInt64Const)expression).Value.ToString()); break;
+            case EExprToken.EX_SkipOffsetConst: outputBuilder.Append(((EX_SkipOffsetConst)expression).Value.ToString()); break;
+            case EExprToken.EX_FloatConst: outputBuilder.Append(((EX_FloatConst)expression).Value.ToString()); break;
+            case EExprToken.EX_BitFieldConst: outputBuilder.Append(((EX_BitFieldConst)expression).ConstValue); break;
+            case EExprToken.EX_UnicodeStringConst: outputBuilder.Append(((EX_UnicodeStringConst)expression).Value); break;
+            case EExprToken.EX_EndOfScript: case EExprToken.EX_EndParmValue: outputBuilder.Append("\n\t}\n"); break;
+            case EExprToken.EX_NoObject: case EExprToken.EX_NoInterface: outputBuilder.Append("nullptr"); break;
+            case EExprToken.EX_IntOne: outputBuilder.Append(1); break;
+            case EExprToken.EX_IntZero: outputBuilder.Append(0); break;
+            case EExprToken.EX_True: outputBuilder.Append("true"); break;
+            case EExprToken.EX_False: outputBuilder.Append("false"); break;
+            case EExprToken.EX_Self: outputBuilder.Append("this"); break;
+            case EExprToken.EX_Nothing: case EExprToken.EX_Tracepoint: case EExprToken.EX_PopExecutionFlow: case EExprToken.EX_PushExecutionFlow: // some here are unsupported
                 break;
             default:
                 Console.WriteLine($"Unsupported token: {token}");
                 outputBuilder.Append($"{token}");
                 break;
         }
-        statementIndices.Add(new StatementInfo { Index = expression.StatementIndex, LineNum = Regex.Split(outputBuilder.ToString().Trim(), @"\r?\n|\r").Length });
     }
 }
