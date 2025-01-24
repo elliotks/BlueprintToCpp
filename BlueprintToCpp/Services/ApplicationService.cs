@@ -15,11 +15,7 @@ public static class ApplicationService
 
     public static async Task Initialize()
     {
-#if DEBUG
         Log.Logger = new LoggerConfiguration().WriteTo.Console(theme: AnsiConsoleTheme.Literate).CreateLogger();
-#else
-        Log.Loger = new LoggerConfiguration().WriteTo.Console(theme: AnsiConsoleTheme.Literate).CreateLogger();
-#endif
 
         await InitOodle().ConfigureAwait(false);
         AppSettings.Load();
