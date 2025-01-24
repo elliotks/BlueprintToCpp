@@ -17,8 +17,6 @@ public static class AppSettings
         if (!Directory.Exists(SettingsDirectory)) Directory.CreateDirectory(SettingsDirectory);
         if (!File.Exists(SettingsFile)) return;
         Current = JsonConvert.DeserializeObject<SettingsViewModel>(File.ReadAllText(SettingsFile)) ?? new SettingsViewModel();
-
-        Console.WriteLine(Current.GameVersion.ToString());
     }
 
     public static async Task Save() => await File.WriteAllTextAsync(SettingsFile, JsonConvert.SerializeObject(Current, Formatting.Indented)).ConfigureAwait(false);
