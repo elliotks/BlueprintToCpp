@@ -29,7 +29,7 @@ public static class Program
 
             await AppSettings.Save().ConfigureAwait(false);
 
-            var package = await Provider.LoadPackageAsync("").ConfigureAwait(false);
+            var package = await Provider.LoadPackageAsync(AppSettings.Current.BlueprintPath).ConfigureAwait(false);
             if (package is not AbstractUePackage abstractPackage)
             {
                 Log.Error("Package is not of type AbstractUePackage but instead of type '{0}'", package.GetType());

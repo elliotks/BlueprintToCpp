@@ -1,7 +1,9 @@
-﻿using BlueRange.Services;
+using System;
+using BlueRange.Services;
 using BlueRange.Settings;
 using CUE4Parse.Encryption.Aes;
 using CUE4Parse.FileProvider;
+using CUE4Parse.MappingsProvider;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Versions;
 using Serilog;
@@ -22,6 +24,7 @@ public class CUE4ParseViewModel
         if (Provider.UnloadedVfs.Count == 0)
             Provider = new DefaultFileProvider(AppSettings.Current.GameDirectory, SearchOption.AllDirectories, true, new VersionContainer(AppSettings.Current.GameVersion));
 
+        Provider.MappingsContainer = new FileUsmapTypeMappingsProvider(AppSettings.Current.UsmapPath);
         Provider.Initialize();
 
         var aes = await ApplicationService.Api.FortniteCentral.GetAesAsync().ConfigureAwait(false);
