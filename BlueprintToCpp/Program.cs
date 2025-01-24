@@ -7,11 +7,13 @@ using CUE4Parse.UE4.Assets;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Assets.Exports;
 using System.Text.RegularExpressions;
+using BlueRange.Services;
+using BlueRange.Settings;
+using BlueRange.Utils;
 using CUE4Parse.UE4.Assets.Exports.Verse;
-using Main.Service;
 using Serilog;
 
-namespace Main;
+namespace BlueRange;
 
 public static class Program
 {
@@ -23,6 +25,9 @@ public static class Program
         try
         {
             await ApplicationService.Initialize().ConfigureAwait(false);
+            await ApplicationService.CUE4Parse.InitializeAsync().ConfigureAwait(false);
+
+            await AppSettings.Save().ConfigureAwait(false);
 
             var package = await Provider.LoadPackageAsync("").ConfigureAwait(false);
             if (package is not AbstractUePackage abstractPackage)
@@ -40,11 +45,11 @@ public static class Program
             if (blueprintGeneratedClass != null)
             {
                 mainClass = blueprintGeneratedClass.Name;
-                outputBuilder.AppendLine($"class {Utils.GetPrefix(blueprintGeneratedClass.GetType().Name)}{blueprintGeneratedClass.Name} : public {Utils.GetPrefix(blueprintGeneratedClass.GetType().Name)}{blueprintGeneratedClass.SuperStruct.Name}\n{{\npublic:");
+                outputBuilder.AppendLine($"class {SomeUtils.GetPrefix(blueprintGeneratedClass.GetType().Name)}{blueprintGeneratedClass.Name} : public {SomeUtils.GetPrefix(blueprintGeneratedClass.GetType().Name)}{blueprintGeneratedClass.SuperStruct.Name}\n{{\npublic:");
 
                 foreach (FProperty property in blueprintGeneratedClass.ChildProperties)
                 {
-                    outputBuilder.AppendLine($"    {Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || Utils.GetPropertyProperty(property) ? "*" : string.Empty)} {property.Name} = {property.Name}placenolder;");
+                    outputBuilder.AppendLine($"    {SomeUtils.GetPrefix(property.GetType().Name)}{SomeUtils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || SomeUtils.GetPropertyProperty(property) ? "*" : string.Empty)} {property.Name} = {property.Name}placenolder;");
                 }
 
                 foreach (var export in package.ExportsLazy)
@@ -80,7 +85,7 @@ public static class Program
                                 { // findout how to setup types for propertytag and this is a mess
                                     if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "StructProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
                                     {
-                                        outputBuilder.AppendLine($"    {Utils.GetPrefix(key.GetType().Name)} {key.Name} = \"{key.Tag.GenericValue}\";");
+                                        outputBuilder.AppendLine($"    {SomeUtils.GetPrefix(key.GetType().Name)} {key.Name} = \"{key.Tag.GenericValue}\";");
                                     }
                                     else
                                         if (key.Tag.GetType().Name == "BoolProperty")
@@ -89,7 +94,7 @@ public static class Program
                                     }
                                     else
                                     {
-                                        outputBuilder.AppendLine($"    {Utils.GetPrefix(key.GetType().Name)} {key.Name} = {key.Tag.GenericValue};");
+                                        outputBuilder.AppendLine($"    {SomeUtils.GetPrefix(key.GetType().Name)} {key.Name} = {key.Tag.GenericValue};");
                                     }
                                 }
                             }
@@ -123,7 +128,7 @@ public static class Program
                     {
                         if (property.Name.PlainText == "ReturnValue")
                         {
-                            returnFunc = $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || Utils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}";
+                            returnFunc = $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{SomeUtils.GetPrefix(property.GetType().Name)}{SomeUtils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || SomeUtils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}";
                         }
                         else if (!(property.Name.ToString().EndsWith("_ReturnValue") ||
                                   property.Name.ToString().StartsWith("CallFunc_") ||
@@ -131,7 +136,7 @@ public static class Program
                                   property.Name.ToString().StartsWith("Temp_")) || // removes useless args
                                   property.PropertyFlags.HasFlag(EPropertyFlags.Edit))
                         {
-                            argsList += $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || Utils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}{(property.PropertyFlags.HasFlag(EPropertyFlags.OutParm) ? "&" : string.Empty)} {property.Name}, ";
+                            argsList += $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{SomeUtils.GetPrefix(property.GetType().Name)}{SomeUtils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || SomeUtils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}{(property.PropertyFlags.HasFlag(EPropertyFlags.OutParm) ? "&" : string.Empty)} {property.Name}, ";
                         }
                     }
                     argsList = argsList.TrimEnd(',', ' ');
@@ -160,11 +165,11 @@ public static class Program
                 if (VerseClass != null)
                 {
                     mainClass = VerseClass.Name;
-                    outputBuilder.AppendLine($"class {Utils.GetPrefix(VerseClass.GetType().Name)}{VerseClass.Name} : public {Utils.GetPrefix(VerseClass.GetType().Name)}{VerseClass.SuperStruct.Name}\n{{\npublic:");
+                    outputBuilder.AppendLine($"class {SomeUtils.GetPrefix(VerseClass.GetType().Name)}{VerseClass.Name} : public {SomeUtils.GetPrefix(VerseClass.GetType().Name)}{VerseClass.SuperStruct.Name}\n{{\npublic:");
 
                     foreach (FProperty property in VerseClass.ChildProperties)
                     {
-                        outputBuilder.AppendLine($"    {Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || Utils.GetPropertyProperty(property) ? "*" : string.Empty)} {property.Name} = {property.Name}placenolder;");
+                        outputBuilder.AppendLine($"    {SomeUtils.GetPrefix(property.GetType().Name)}{SomeUtils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || SomeUtils.GetPropertyProperty(property) ? "*" : string.Empty)} {property.Name} = {property.Name}placenolder;");
                     }
 
                     foreach (var export in package.ExportsLazy)
@@ -200,7 +205,7 @@ public static class Program
                                     { // findout how to setup types for propertytag and this is a mess
                                         if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "StructProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
                                         {
-                                            outputBuilder.AppendLine($"    {Utils.GetPrefix(key.GetType().Name)} {key.Name} = \"{key.Tag.GenericValue}\";");
+                                            outputBuilder.AppendLine($"    {SomeUtils.GetPrefix(key.GetType().Name)} {key.Name} = \"{key.Tag.GenericValue}\";");
                                         }
                                         else
                                             if (key.Tag.GetType().Name == "BoolProperty")
@@ -209,7 +214,7 @@ public static class Program
                                         }
                                         else
                                         {
-                                            outputBuilder.AppendLine($"    {Utils.GetPrefix(key.GetType().Name)} {key.Name} = {key.Tag.GenericValue};");
+                                            outputBuilder.AppendLine($"    {SomeUtils.GetPrefix(key.GetType().Name)} {key.Name} = {key.Tag.GenericValue};");
                                         }
                                     }
                                 }
@@ -245,7 +250,7 @@ public static class Program
                             {
                                 if (property.Name.PlainText == "ReturnValue")
                                 {
-                                    returnFunc = $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || Utils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}";
+                                    returnFunc = $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{SomeUtils.GetPrefix(property.GetType().Name)}{SomeUtils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || SomeUtils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}";
                                 }
                                 else if (!(property.Name.ToString().EndsWith("_ReturnValue") ||
                                           property.Name.ToString().StartsWith("CallFunc_") ||
@@ -253,7 +258,7 @@ public static class Program
                                           property.Name.ToString().StartsWith("Temp_")) || // removes useless args
                                           property.PropertyFlags.HasFlag(EPropertyFlags.Edit))
                                 {
-                                    argsList += $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || Utils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}{(property.PropertyFlags.HasFlag(EPropertyFlags.OutParm) ? "&" : string.Empty)} {property.Name}, ";
+                                    argsList += $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{SomeUtils.GetPrefix(property.GetType().Name)}{SomeUtils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || SomeUtils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}{(property.PropertyFlags.HasFlag(EPropertyFlags.OutParm) ? "&" : string.Empty)} {property.Name}, ";
                                 }
                             }
                         }
@@ -290,6 +295,8 @@ public static class Program
             File.WriteAllText(outputFilePath, updatedOutput);
 
             Console.WriteLine($"Output written to: {outputFilePath}");
+
+            await AppSettings.Save().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -333,7 +340,7 @@ public static class Program
                     }
                     else
                     {
-                        outputBuilder.Append($"\t\t{Utils.GetPrefix(op?.StackNode?.ResolvedObject?.Outer?.GetType()?.Name)}{op?.StackNode?.Name.Replace(" ", "")}(");
+                        outputBuilder.Append($"\t\t{SomeUtils.GetPrefix(op?.StackNode?.ResolvedObject?.Outer?.GetType()?.Name)}{op?.StackNode?.Name.Replace(" ", "")}(");
                     }
 
                     for (int i = 0; i < opp.Length; i++)
@@ -359,7 +366,7 @@ public static class Program
                 {
                     EX_FinalFunction op = (EX_FinalFunction) expression;
                     KismetExpression[] opp = (KismetExpression[]) op.Parameters;
-                    outputBuilder.Append($"{Utils.GetPrefix(op.StackNode.ResolvedObject.Outer.GetType().Name)}{op.StackNode.ResolvedObject.Outer.Name.ToString().Replace(" ", "")}::{op.StackNode.Name}(");
+                    outputBuilder.Append($"{SomeUtils.GetPrefix(op.StackNode.ResolvedObject.Outer.GetType().Name)}{op.StackNode.ResolvedObject.Outer.Name.ToString().Replace(" ", "")}::{op.StackNode.Name}(");
                     for (int i = 0; i < opp.Length; i++)
                     {
                         if (opp.Length > 4) outputBuilder.Append("\n    ");
@@ -646,7 +653,7 @@ public static class Program
             case EExprToken.EX_StructConst:
                 {
                     EX_StructConst op = (EX_StructConst)expression;
-                    outputBuilder.Append($"{Utils.GetPrefix(op.Struct.GetType().Name)}{op.Struct.Name}");
+                    outputBuilder.Append($"{SomeUtils.GetPrefix(op.Struct.GetType().Name)}{op.Struct.Name}");
                     outputBuilder.Append($"(");
                     for (int i = 0; i < op.Properties.Length; i++)
                     {
@@ -687,7 +694,7 @@ public static class Program
                     {
                         outputBuilder.Append("\")");
                     }
-                    elseEX_Context
+                    else
                     {
                         outputBuilder.Append("\")");
                     }

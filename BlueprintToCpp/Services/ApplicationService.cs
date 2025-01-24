@@ -1,26 +1,45 @@
-﻿using CUE4Parse.Compression;
-using Main.ViewModels;
+﻿using BlueRange.Settings;
+using BlueRange.ViewModels;
+using CUE4Parse.Compression;
+using CUE4Parse.UE4.Versions;
 using Serilog;
 using Serilog.Sinks.SystemConsole.Themes;
+using Spectre.Console;
 
-namespace Main.Service;
+namespace BlueRange.Services;
 
 public static class ApplicationService
 {
     public static CUE4ParseViewModel CUE4Parse = new();
+    public static ApiEndpointViewModel Api = new();
 
     public static async Task Initialize()
     {
 #if DEBUG
-        Log.Logger = new LoggerConfiguration().WriteTo.Console(theme: AnsiConsoleTheme.Literate).MinimumLevel.Debug().CreateLogger();
+        Log.Logger = new LoggerConfiguration().WriteTo.Console(theme: AnsiConsoleTheme.Literate).CreateLogger();
 #else
         Log.Loger = new LoggerConfiguration().WriteTo.Console(theme: AnsiConsoleTheme.Literate).CreateLogger();
 #endif
 
         await InitOodle().ConfigureAwait(false);
+        AppSettings.Load();
+
+        if (string.IsNullOrWhiteSpace(AppSettings.Current.GameDirectory))
+        {
+            AppSettings.Current.GameDirectory = AnsiConsole.Prompt(new TextPrompt<string>("Please enter your [green]game directory[/] path:")
+                    .Validate(x => Directory.Exists(x) && Directory.EnumerateFiles(x, "*.pak", SearchOption.AllDirectories).Count() > 0)
+                    .PromptStyle("green"));
+        }
+
+        if (AppSettings.Current.GameVersion == 0)
+        {
+            AppSettings.Current.GameVersion = AnsiConsole.Prompt(new SelectionPrompt<EGame>()
+                .Title("Please select your [green]game version[/]:")
+                .AddChoices(Enum.GetValues<EGame>().OrderBy(x => x)));
+        }
     }
 
-    public static async Task InitOodle()
+    private static async Task InitOodle()
     {
         var oodlePath = Path.Combine(Environment.CurrentDirectory, OodleHelper.OODLE_DLL_NAME);
         if (!File.Exists(oodlePath)) await OodleHelper.DownloadOodleDllAsync(oodlePath).ConfigureAwait(false);

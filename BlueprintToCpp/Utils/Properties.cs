@@ -1,11 +1,10 @@
-using System;
-using CUE4Parse.UE4.Assets.Objects;
-using CUE4Parse.UE4.Assets.Objects.Properties;
-using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Versions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
+
+namespace BlueRange.Utils;
+
 public class Config
 {
     public string PakFolderPath { get; set; }
@@ -16,7 +15,8 @@ public class Config
     [JsonConverter(typeof(StringEnumConverter))]
     public EGame Version { get; set; }
 }
-public static class Utils
+
+public static class SomeUtils
 {
     public static Config LoadConfig(string path)
     {

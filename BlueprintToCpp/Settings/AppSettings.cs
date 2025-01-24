@@ -1,10 +1,25 @@
-﻿using Main.ViewModels;
+﻿using BlueRange.ViewModels;
+using CUE4Parse.UE4.Versions;
+using Newtonsoft.Json;
+using Serilog;
 
-namespace Main.Settings;
+namespace BlueRange.Settings;
 
-public class AppSettings
+public static class AppSettings
 {
     public static SettingsViewModel Current = new();
 
-    private static readonly DirectoryInfo SettingsDirectory = new(Path.Combine(Environment.CurrentDirectory, "Output", "Settings"));
+    private static readonly string SettingsDirectory = Path.Combine(Environment.CurrentDirectory, "Output", "Settings");
+    private static readonly string SettingsFile = Path.Combine(SettingsDirectory, "AppSettings.json");
+
+    public static void Load()
+    {
+        if (!Directory.Exists(SettingsDirectory)) Directory.CreateDirectory(SettingsDirectory);
+        if (!File.Exists(SettingsFile)) return;
+        Current = JsonConvert.DeserializeObject<SettingsViewModel>(File.ReadAllText(SettingsFile)) ?? new SettingsViewModel();
+
+        Console.WriteLine(Current.GameVersion.ToString());
+    }
+
+    public static async Task Save() => await File.WriteAllTextAsync(SettingsFile, JsonConvert.SerializeObject(Current, Formatting.Indented)).ConfigureAwait(false);
 }
