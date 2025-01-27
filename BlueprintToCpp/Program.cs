@@ -105,12 +105,8 @@ public static class Program
 
                 if (blueprintGeneratedClass?.ChildProperties != null)
                 {
-                    foreach (FProperty property in blueprintGeneratedClass?.ChildProperties)
-                    {
-                        outputBuilder.AppendLine($"\t{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || Utils.GetPropertyProperty(property) ? "*" : string.Empty)} {property.Name.PlainText.Replace(" ", "")} = {property.Name.PlainText.Replace(" ", "")}placenolder;");
-                    }
                 }
-
+                var stringsarr = new List<string>();
                 foreach (var export in package.ExportsLazy)
                 {
                     if (export.Value is not UBlueprintGeneratedClass)
@@ -120,6 +116,7 @@ public static class Program
                             var exportObject = (UObject) export.Value;
                             foreach (var key in exportObject.Properties)
                             {
+                                stringsarr.Add(key.Name.PlainText);
                                 string placeholder = $"{key.Name}placenolder";
                                 string result = key.Tag.GenericValue?.ToString();
                                 string keyName = key.Name.PlainText.Replace(" ", "");
@@ -215,7 +212,7 @@ public static class Program
                                         ShouldAppend($"\"{result}\"");
                                     }
                                 }
-                                else if (key.Tag.GetType().Name == "ObjectProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
+                                else if (key.Tag.GetType().Name == "ObjectProperty" || key.Tag.GetType().Name == "TextProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
                                 {
                                     ShouldAppend($"\"{result}\"");
                                 }
@@ -313,6 +310,10 @@ public static class Program
                     }
                 }
 
+                foreach (FProperty property in blueprintGeneratedClass?.ChildProperties)
+                {
+                    if (!stringsarr.Contains(property.Name.PlainText)) outputBuilder.AppendLine($"\t{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || Utils.GetPropertyProperty(property) ? "*" : string.Empty)} {property.Name.PlainText.Replace(" ", "")} = {property.Name.PlainText.Replace(" ", "")}placenolder;");
+                }
                 var funcMapOrder = blueprintGeneratedClass.FuncMap != null ? blueprintGeneratedClass.FuncMap.Keys.Select(fname => fname.ToString()).ToList() : null;
 
                 var functions = package.ExportsLazy
@@ -351,7 +352,9 @@ public static class Program
                                       property.Name.ToString().StartsWith("Temp_")) || // removes useless args
                                       property.PropertyFlags.HasFlag(EPropertyFlags.Edit))
                             {
-                                argsList += $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || Utils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}{(property.PropertyFlags.HasFlag(EPropertyFlags.OutParm) ? "&" : string.Empty)} {property.Name.PlainText.Replace(" ", "")}, ";
+                                //Console.WriteLine(property.Name);
+                                //Console.WriteLine(property.GetType().Name);
+                                argsList += $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{Utils.GetPrefix(property.GetType().Name, Utils.GetPropertyType(property))}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || Utils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}{(property.PropertyFlags.HasFlag(EPropertyFlags.OutParm) ? "&" : string.Empty)} {property.Name.PlainText.Replace(" ", "")}, ";
                             }
                         }
                     }
@@ -1459,14 +1462,14 @@ public static class Program
             case EExprToken.EX_FloatConst: outputBuilder.Append(((EX_FloatConst)expression).Value.ToString()); break;
             case EExprToken.EX_BitFieldConst: outputBuilder.Append(((EX_BitFieldConst)expression).ConstValue); break;
             case EExprToken.EX_UnicodeStringConst: outputBuilder.Append(((EX_UnicodeStringConst)expression).Value); break;
-            case EExprToken.EX_EndOfScript: case EExprToken.EX_EndParmValue: outputBuilder.Append("\n\t}\n"); break;
+            case EExprToken.EX_EndOfScript: case EExprToken.EX_EndParmValue: outputBuilder.Append("\t}\n"); break;
             case EExprToken.EX_NoObject: case EExprToken.EX_NoInterface: outputBuilder.Append("nullptr"); break;
             case EExprToken.EX_IntOne: outputBuilder.Append(1); break;
             case EExprToken.EX_IntZero: outputBuilder.Append(0); break;
             case EExprToken.EX_True: outputBuilder.Append("true"); break;
             case EExprToken.EX_False: outputBuilder.Append("false"); break;
             case EExprToken.EX_Self: outputBuilder.Append("this"); break;
-            case EExprToken.EX_Nothing: case EExprToken.EX_Tracepoint: case EExprToken.EX_PopExecutionFlow: case EExprToken.EX_EndFunctionParms: case EExprToken.EX_EndStructConst: case EExprToken.EX_EndArray: case EExprToken.EX_EndArrayConst: case EExprToken.EX_EndSet: case EExprToken.EX_EndMap: case EExprToken.EX_EndSetConst: case EExprToken.EX_EndMapConst: // some here are unsupported
+            case EExprToken.EX_Nothing: case EExprToken.EX_Tracepoint: case EExprToken.EX_PopExecutionFlow: case EExprToken.EX_PushExecutionFlow: case EExprToken.EX_EndFunctionParms: case EExprToken.EX_EndStructConst: case EExprToken.EX_EndArray: case EExprToken.EX_EndArrayConst: case EExprToken.EX_EndSet: case EExprToken.EX_EndMap: case EExprToken.EX_EndSetConst: case EExprToken.EX_EndMapConst: // some here are unsupported
                 break;
             /*
             EExprToken.EX_Assert

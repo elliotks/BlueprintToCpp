@@ -41,12 +41,15 @@ public static class Utils
         return JsonConvert.DeserializeObject<Config>(json);
     }
 
-    public static string GetPrefix(string type)
+    public static string GetPrefix(string type, string extra = "")
     {
+        //Console.WriteLine(type);
+        //Console.WriteLine(extra);
         return type switch
         {
             "FNameProperty" or "FPackageIndex" or "FTextProperty" or "FStructProperty" => "F",
             "UBlueprintGeneratedClass" or "FActorProperty" => "A",
+            "FObjectProperty" when extra.Contains("Actor") => "A",
             "ResolvedScriptObject" or "ResolvedLoadedObject" or "FSoftObjectProperty" or "FObjectProperty" => "U",
             _ => ""
         };
