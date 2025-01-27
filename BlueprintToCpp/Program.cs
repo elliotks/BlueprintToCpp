@@ -99,9 +99,12 @@ public static class Program
                 mainClass = blueprintGeneratedClass.Name;
                 outputBuilder.AppendLine($"class {Utils.GetPrefix(blueprintGeneratedClass.GetType().Name)}{blueprintGeneratedClass.Name} : public {Utils.GetPrefix(blueprintGeneratedClass.GetType().Name)}{blueprintGeneratedClass.SuperStruct.Name}\n{{\npublic:");
 
-                foreach (FProperty property in blueprintGeneratedClass.ChildProperties)
+                if (blueprintGeneratedClass?.ChildProperties != null)
                 {
-                    outputBuilder.AppendLine($"\t{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || Utils.GetPropertyProperty(property) ? "*" : string.Empty)} {property.Name.PlainText.Replace(" ", "")} = {property.Name.PlainText.Replace(" ", "")}placenolder;");
+                    foreach (FProperty property in blueprintGeneratedClass?.ChildProperties)
+                    {
+                        outputBuilder.AppendLine($"\t{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || Utils.GetPropertyProperty(property) ? "*" : string.Empty)} {property.Name.PlainText.Replace(" ", "")} = {property.Name.PlainText.Replace(" ", "")}placenolder;");
+                    }
                 }
 
                 foreach (var export in package.ExportsLazy)
@@ -232,38 +235,46 @@ public static class Program
                     }
                 }
 
-                var funcMapOrder = blueprintGeneratedClass.FuncMap.Keys.Select(fname => fname.ToString()).ToList();
+                var funcMapOrder = blueprintGeneratedClass.FuncMap != null ? blueprintGeneratedClass.FuncMap.Keys.Select(fname => fname.ToString()).ToList() : null;
 
                 var functions = package.ExportsLazy
                     .Where(e => e.Value is UFunction)
                     .Select(e => (UFunction) e.Value)
                     .OrderBy(f =>
                     {
-                        var functionName = f.Name.ToString();
-                        int index = funcMapOrder.IndexOf(functionName);
-                        return index >= 0 ? index : int.MaxValue;
+                        if (funcMapOrder != null)
+                        {
+                            var functionName = f.Name.ToString();
+                            int index = funcMapOrder.IndexOf(functionName);
+                            return index >= 0 ? index : int.MaxValue;
+                        }
+                        return int.MaxValue;
                     })
                     .ThenBy(f => f.Name.ToString())
                     .ToList();
+
 
                 foreach (var function in functions)
                 {
                     //FunctionName = function.Name.Replace(" ", "");
                     string argsList = "";
                     string returnFunc = "void";
-                    foreach (FProperty property in function.ChildProperties)
+                    if (function?.ChildProperties != null)
                     {
-                        if (property.Name.PlainText == "ReturnValue")
+                        foreach (FProperty property in function.ChildProperties)
                         {
-                            returnFunc = $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || Utils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}";
-                        }
-                        else if (!(property.Name.ToString().EndsWith("_ReturnValue") ||
-                                  property.Name.ToString().StartsWith("CallFunc_") ||
-                                  property.Name.ToString().StartsWith("K2Node_") ||
-                                  property.Name.ToString().StartsWith("Temp_")) || // removes useless args
-                                  property.PropertyFlags.HasFlag(EPropertyFlags.Edit))
-                        {
-                            argsList += $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || Utils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}{(property.PropertyFlags.HasFlag(EPropertyFlags.OutParm) ? "&" : string.Empty)} {property.Name.PlainText.Replace(" ", "")}, ";
+                            if (property.Name.PlainText == "ReturnValue")
+                            {
+                                returnFunc = $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || Utils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}";
+                            }
+                            else if (!(property.Name.ToString().EndsWith("_ReturnValue") ||
+                                      property.Name.ToString().StartsWith("CallFunc_") ||
+                                      property.Name.ToString().StartsWith("K2Node_") ||
+                                      property.Name.ToString().StartsWith("Temp_")) || // removes useless args
+                                      property.PropertyFlags.HasFlag(EPropertyFlags.Edit))
+                            {
+                                argsList += $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || Utils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}{(property.PropertyFlags.HasFlag(EPropertyFlags.OutParm) ? "&" : string.Empty)} {property.Name.PlainText.Replace(" ", "")}, ";
+                            }
                         }
                     }
                     argsList = argsList.TrimEnd(',', ' ');
