@@ -1238,8 +1238,22 @@ public static class Program
             case EExprToken.EX_True: outputBuilder.Append("true"); break;
             case EExprToken.EX_False: outputBuilder.Append("false"); break;
             case EExprToken.EX_Self: outputBuilder.Append("this"); break;
-            case EExprToken.EX_Nothing: case EExprToken.EX_Tracepoint: case EExprToken.EX_PopExecutionFlow: case EExprToken.EX_PushExecutionFlow: // some here are unsupported
+            case EExprToken.EX_Nothing: case EExprToken.EX_Tracepoint: case EExprToken.EX_PopExecutionFlow: case EExprToken.EX_EndFunctionParms: case EExprToken.EX_EndStructConst: case EExprToken.EX_EndArray: case EExprToken.EX_EndArrayConst case EExprToken.EX_EndSet: case EExprToken.EX_EndMap: case EExprToken.EX_EndSetConst: case EExprToken.EX_EndMapConst: // some here are unsupported
                 break;
+            /*
+            EExprToken.EX_Assert
+            EExprToken.EX_NothingInt32
+            EExprToken.EX_EndFunctionParms
+            EExprToken.EX_Skip
+            EExprToken.EX_DeprecatedOp4A
+            EExprToken.EX_Breakpoint
+            EExprToken.EX_WireTracepoint
+            EExprToken.EX_InstrumentationEvent
+            EExprToken.EX_FieldPathConst
+            EExprToken.EX_AutoRtfmStopTransact
+            EExprToken.EX_AutoRtfmTransact
+            EExprToken.EX_AutoRtfmAbortIfNot
+            */
             default:
                 Console.WriteLine($"Unsupported token: {token}");
                 outputBuilder.Append($"{token}");
