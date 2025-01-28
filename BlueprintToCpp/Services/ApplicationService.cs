@@ -32,21 +32,9 @@ public static class ApplicationService
             AppSettings.Current.GameVersion = AnsiConsole.Prompt(new SelectionPrompt<EGame>()
                 .Title("Please select your [green]game version[/]:")
                 .AddChoices(Enum.GetValues<EGame>()
-            .GroupBy(value => (int)value)
-            .Select(group => group.First())
-            .OrderBy(value => (int)value == ((int)value & ~0xF))));
-        }
-
-        if (string.IsNullOrWhiteSpace(AppSettings.Current.UsmapPath))
-        {
-            AppSettings.Current.UsmapPath = AnsiConsole.Prompt(new TextPrompt<string>("Please enter your [green]Mappings file[/] path:")
-                    .PromptStyle("green"));
-        }
-
-        if (string.IsNullOrWhiteSpace(AppSettings.Current.BlueprintPath))
-        {
-            AppSettings.Current.BlueprintPath = AnsiConsole.Prompt(new TextPrompt<string>("Please enter your [green]Blueprint uasset[/] path:")
-                    .PromptStyle("green"));
+                    .GroupBy(value => (int)value)
+                    .Select(group => group.First())
+                    .OrderByDescending(value => (int)value == ((int)value & ~0xF))));
         }
     }
 

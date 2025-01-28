@@ -20,4 +20,12 @@ public class FortniteCentralApiEndpoint
         Log.Information("[{Method}] [{Status}({StatusCode})] '{Resource}'", request.Method, response.StatusDescription, (int) response.StatusCode, request.Resource);
         return response.Data ?? new AesResponse();
     }
+
+    public async Task<MappingsResponse[]> GetMappingsAsync()
+    {
+        var request = new RestRequest("https://fortnitecentral.genxgames.gg/api/v1/mappings");
+        var response = await _client.ExecuteAsync<MappingsResponse[]>(request).ConfigureAwait(false);
+        Log.Information("[{Method}] [{Status}({StatusCode})] '{Resource}'", request.Method, response.StatusDescription, (int) response.StatusCode, request.Resource);
+        return response.Data ?? [];
+    }
 }

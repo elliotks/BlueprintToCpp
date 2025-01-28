@@ -16,4 +16,11 @@ public class ApiEndpointViewModel
     {
         FortniteCentral = new FortniteCentralApiEndpoint(_client);
     }
+
+    public async Task<byte[]> DownloadFileAsync(string url)
+    {
+        var request = new RestRequest(url);
+        var data = await _client.DownloadDataAsync(request).ConfigureAwait(false);
+        return data ?? [];
+    }
 }
