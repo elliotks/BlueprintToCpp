@@ -69,13 +69,14 @@ public static class Program
 
             var blueprintGeneratedClass = package?.ExportsLazy.Where(export => export.Value is UBlueprintGeneratedClass).Select(export => (UBlueprintGeneratedClass) export.Value).FirstOrDefault();
             var VerseClass = package?.ExportsLazy.Where(export => export.Value is UVerseClass).Select(export => (UVerseClass) export.Value).FirstOrDefault();
-
+          
             if (VerseClass != null)
                 IsVerse = true;
             if (blueprintGeneratedClass != null || IsVerse)
             {
                 var mainClass = blueprintGeneratedClass?.Name ?? VerseClass?.Name;
                 var superStructName = blueprintGeneratedClass?.SuperStruct.Name ?? VerseClass?.SuperStruct.Name;
+                
                 outputBuilder.AppendLine($"class {SomeUtils.GetPrefix(blueprintGeneratedClass?.GetType().Name ?? VerseClass?.GetType().Name)}{mainClass} : public {SomeUtils.GetPrefix(blueprintGeneratedClass?.GetType().Name ?? VerseClass?.GetType().Name)}{superStructName}\n{{\npublic:");
 
                 var stringsarr = new List<string>();
@@ -103,7 +104,7 @@ public static class Program
                                     }
                                     else
                                     {
-                                        outputBuilder.AppendLine($"\t{SomeUtils.GetPropertyType(PropertyTag)} {keyName} = {value};");
+                                      outputBuilder.AppendLine($"\t{SomeUtils.GetPropertyType(PropertyTag)} {keyName} = {value};");
                                     }
                                 }
 
@@ -286,7 +287,7 @@ public static class Program
                 var childProperties = blueprintGeneratedClass?.ChildProperties ?? VerseClass?.ChildProperties;
                 foreach (FProperty property in childProperties)
                 {
-                    if (!stringsarr.Contains(property.Name.PlainText))
+                    if (!stringsarr.Contains(property.Name.PlainText)) {
                         outputBuilder.AppendLine($"\t{SomeUtils.GetPrefix(property.GetType().Name)}{SomeUtils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || SomeUtils.GetPropertyProperty(property) ? "*" : string.Empty)} {property.Name.PlainText.Replace(" ", "")} = {property.Name.PlainText.Replace(" ", "")}placenolder;");
                 }
 
@@ -318,7 +319,7 @@ public static class Program
                         {
                             if (property.Name.PlainText == "ReturnValue")
                             {
-                                returnFunc = $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{SomeUtils.GetPrefix(property.GetType().Name)}{SomeUtils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || SomeUtils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}";
+                              returnFunc = $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{SomeUtils.GetPrefix(property.GetType().Name)}{SomeUtils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || SomeUtils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}";
                             }
                             else if (!(property.Name.ToString().EndsWith("_ReturnValue") ||
                                       property.Name.ToString().StartsWith("CallFunc_") ||
@@ -370,7 +371,6 @@ public static class Program
 
                 }
             }
-
             int targetIndex = outputBuilder.ToString().IndexOf("placenolder");
             string pattern = $@"\w+placenolder";
             string updatedOutput = Regex.Replace(outputBuilder.ToString(), pattern, "nullptr");
@@ -525,9 +525,8 @@ public static class Program
                     }
                     for (int i = 0; i < opp.Length; i++)
                     {
-                        if (opp.Length > 4)
+                      if (opp.Length > 4)
                             outputBuilder.Append("\n\t\t");
-
                         ProcessExpression(opp[i].Token, opp[i], outputBuilder, true);
                         if (i < opp.Length - 1)
                         {
@@ -799,7 +798,6 @@ public static class Program
 
                     if (classString?.Contains(".") == true)
                     {
-
                         outputBuilder.Append(SomeUtils.GetPrefix(op?.Value?.ResolvedObject?.Class.GetType().Name) + classString.Split(".")[1]);
                     }
                     else
@@ -1062,7 +1060,7 @@ public static class Program
                     EX_Return op = (EX_Return) expression;
                     bool tocheck = op.ReturnExpression.Token == EExprToken.EX_Nothing;
                     outputBuilder.Append($"\t\treturn");
-                    if (!tocheck)
+                  if (!tocheck)
                         outputBuilder.Append(" ");
                     ProcessExpression(op.ReturnExpression.Token, op.ReturnExpression, outputBuilder, true);
                     outputBuilder.AppendLine(";\n\n");
