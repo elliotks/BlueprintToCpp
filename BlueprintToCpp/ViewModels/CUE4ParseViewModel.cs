@@ -1,11 +1,13 @@
 using BlueRange.Services;
 using BlueRange.Settings;
+using BlueRange.ViewModels.Api.Models;
 using CUE4Parse.Encryption.Aes;
 using CUE4Parse.FileProvider;
 using CUE4Parse.MappingsProvider;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Versions;
 using Serilog;
+using Spectre.Console;
 
 namespace BlueRange.ViewModels;
 
@@ -27,7 +29,18 @@ public class CUE4ParseViewModel
 
         var mountedPackages = await Provider.MountAsync().ConfigureAwait(false);
 
-        var aes = await ApplicationService.Api.FortniteCentral.GetAesAsync().ConfigureAwait(false);
+        var aes; // wow
+        if (Provider.InternalGameName == "fortnitegame")
+        {
+             aes = await ApplicationService.Api.FortniteCentral.GetAesAsync().ConfigureAwait(false);
+        }
+        else
+        {
+            var aesPath = AnsiConsole.Prompt(new TextPrompt<string>("Please enter the [green]AES json path[/]:")
+                .PromptStyle("green"));
+            // finsih this
+        }
+
         mountedPackages += await Provider.SubmitKeyAsync(new FGuid(), new FAesKey(aes.MainKey)).ConfigureAwait(false);
 
         foreach (var dynamicKey in aes.DynamicKeys)
@@ -38,26 +51,36 @@ public class CUE4ParseViewModel
         Log.Information("Mounted {0} packages", mountedPackages);
         Log.Information("Loaded {0} localized strings", localizedStrings);
 
-        var mappings = await ApplicationService.Api.FortniteCentral.GetMappingsAsync().ConfigureAwait(false);
         var filePath = string.Empty;
-
-        if (mappings.Length <= 0)
+        if (Provider.InternalGameName == "fortnitegame")
         {
-            filePath = Directory.GetFiles(Environment.CurrentDirectory, "*.usmap").Order().LastOrDefault();
+            var mappings = await ApplicationService.Api.FortniteCentral.GetMappingsAsync().ConfigureAwait(false);
+
+            if (mappings.Length <= 0)
+            {
+                filePath = Directory.GetFiles(Environment.CurrentDirectory, "*.usmap").Order().LastOrDefault();
+            }
+            else
+            {
+                var mapping = mappings.First();
+
+                filePath = Path.Combine(Environment.CurrentDirectory, mapping.FileName);
+                var data = await ApplicationService.Api.DownloadFileAsync(mapping.Url).ConfigureAwait(false);
+                if (data.Length <= 0)
+                    throw new NullReferenceException("No internet = no mappings = no packages");
+
+                await File.WriteAllBytesAsync(filePath, data);
+            }
         }
         else
         {
-            var mapping = mappings.First();
-
-            filePath = Path.Combine(Environment.CurrentDirectory, mapping.FileName);
-            var data = await ApplicationService.Api.DownloadFileAsync(mapping.Url).ConfigureAwait(false);
-            if (data.Length <= 0)
-                throw new NullReferenceException("No internet = no mappings = no packages");
-
-            await File.WriteAllBytesAsync(filePath, data);
+                filePath = AnsiConsole.Prompt(new TextPrompt<string>("Please enter the [green]mappings path[/]:")
+                .PromptStyle("green"));
         }
 
         Provider.MappingsContainer = new FileUsmapTypeMappingsProvider(filePath);
+
         Log.Information("Mappings pulled from {0}", filePath);
+        Provider.ReadScriptData = true;
     }
 }
