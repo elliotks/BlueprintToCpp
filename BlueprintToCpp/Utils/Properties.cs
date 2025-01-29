@@ -3,6 +3,8 @@ using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Assets.Objects.Properties;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.GameplayTags;
+using CUE4Parse.UE4.Objects.UObject;
+
 namespace BlueRange.Utils;
 public static class SomeUtils
 {
@@ -102,7 +104,7 @@ public static class SomeUtils
         };
     }
     public static bool GetPropertyProperty(object? property)
-    { 
+    {
       if (property is null)
             return false;
 
