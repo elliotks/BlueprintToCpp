@@ -25,7 +25,7 @@ Powered by [CUE4Parse](https://github.com/FabianFG/CUE4Parse)
       "PakFolderPath": "C:/Program Files/Epic Games/Fortnite/FortniteGame/Content/Paks",
       "BlueprintPath": "FortniteGame/Content/Athena/Cosmetics/Sprays/BP_SprayDecal.uasset",
       "OodlePath": "C:/Users/krowe/BlueprintToCpp/oo2core_5_win64.dll",
-      "ZlibPath ": "", // only some games use zlib compression
+      "ZlibPath ": "", // leave blank if no zlib compression
       "UsmapPath": "C:/Users/krowe/BlueprintToCpp/++Fortnite+Release-33.20-CL-39082670-Windows_oo.usmap",
       "Version": "GAME_UE5_LATEST"
     }
