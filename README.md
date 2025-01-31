@@ -20,11 +20,12 @@ Powered by [CUE4Parse](https://github.com/FabianFG/CUE4Parse)
 2. Configure the options in `config.json`:
 
     Example:
-    ```json
+    ```js
     {
       "PakFolderPath": "C:/Program Files/Epic Games/Fortnite/FortniteGame/Content/Paks",
       "BlueprintPath": "FortniteGame/Content/Athena/Cosmetics/Sprays/BP_SprayDecal.uasset",
       "OodlePath": "C:/Users/krowe/BlueprintToCpp/oo2core_5_win64.dll",
+      "ZlibPath ": "", // only some games use zlib compression
       "UsmapPath": "C:/Users/krowe/BlueprintToCpp/++Fortnite+Release-33.20-CL-39082670-Windows_oo.usmap",
       "Version": "GAME_UE5_LATEST"
     }
@@ -38,7 +39,7 @@ If you want to set up AES, run the program once (with the config set), then modi
 
 ## Output
 
-The decompiled blueprint will be output as `Output.cpp`.
+The decompiled blueprint will be output as `Output.cpp` (this has changed to output as folder hierarchy, will have a option to disable soon).
 
 Note: Currently, this tool does not support all expressions, and the C++ output may not be 100% accurate.
 
