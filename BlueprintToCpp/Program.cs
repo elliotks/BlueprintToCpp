@@ -88,6 +88,8 @@ public static class Program
                 return;
             }
 
+            string zlibPath = config.ZlibPath;
+
             EGame version = config.Version;
             if (string.IsNullOrEmpty(version.ToString()) || version.ToString().Length < 1)
             {
@@ -97,7 +99,7 @@ public static class Program
 
             string exeDirectory = AppDomain.CurrentDomain.BaseDirectory;
 
-            var provider = InitializeProvider(pakFolderPath, usmapPath, oodlePath, version);
+            var provider = InitializeProvider(pakFolderPath, usmapPath, oodlePath, zlibPath, version);
             provider.ReadScriptData = true;
             await LoadAesKeysAsync(provider,
                 "https://fortnitecentral.genxgames.gg/api/v1/aes"); // allow users to change the aes url?
@@ -559,9 +561,14 @@ public static class Program
         }
     }
 
-    static DefaultFileProvider InitializeProvider(string pakFolderPath, string usmapPath, string oodlePath, EGame version)
+    static DefaultFileProvider InitializeProvider(string pakFolderPath, string usmapPath, string oodlePath, string zlibPath, EGame version)
     {
         OodleHelper.Initialize(oodlePath);
+
+        if (!string.IsNullOrEmpty(zlibPath) && zlibPath.Length > 0)
+        {
+            ZlibHelper.Initialize(zlibPath);
+        }
 
         var provider = new DefaultFileProvider(pakFolderPath, SearchOption.TopDirectoryOnly, true, new VersionContainer(version))
         {
