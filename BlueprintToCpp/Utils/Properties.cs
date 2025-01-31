@@ -42,7 +42,7 @@ public static class Utils
         return JsonConvert.DeserializeObject<Config>(json);
     }
 
-    public static string GetPrefix(string type, string extra = "")
+    public static string GetPrefix(string? type, string? extra = "")
     {
         return type switch
         {
@@ -77,7 +77,7 @@ public static class Utils
     {
         if (property is null) return "None";
 
-        Console.WriteLine(property.GetType().Name);
+        //Console.WriteLine(property.GetType().Name);
         return property switch
         {
             FIntProperty => "int",
@@ -87,11 +87,11 @@ public static class Utils
             FDoubleProperty or Double => "double",
             FObjectProperty objct => property switch
             {
-                FClassProperty clss => $"{clss.MetaClass?.Name ?? "UNKNOWN"} Class",
-                FSoftClassProperty softClass => $"{softClass.MetaClass?.Name ?? "UNKNOWN"} Class (soft)",
+                FClassProperty clss => $"{clss.MetaClass?.Name ?? "UNKNOWN"}",
+                FSoftClassProperty softClass => $"{softClass.MetaClass?.Name ?? "UNKNOWN"}",
                 _ => objct.PropertyClass?.Name ?? "UNKNOWN"
             },
-            FPackageIndex pkg => pkg.ResolvedObject.Class.Name.ToString() ?? "Package",
+            FPackageIndex pkg => pkg?.ResolvedObject?.Class?.Name.ToString() ?? "Package",
             FName fme => fme.PlainText.Contains("::") ? fme.PlainText.Split("::")[0] : fme.PlainText ?? "FName",
             FEnumProperty enm => enm.Enum?.Name.ToString() ?? "Enum",
             FByteProperty bt => bt.Enum.ResolvedObject?.Name.Text ?? "Byte",
