@@ -55,11 +55,11 @@ public static class SomeUtils
             FDoubleProperty or Double => "double",
             FObjectProperty objct => property switch
             {
-                FClassProperty clss => $"{clss.MetaClass?.Name ?? "UNKNOWN"} Class",
-                FSoftClassProperty softClass => $"{softClass.MetaClass?.Name ?? "UNKNOWN"} Class (soft)",
+                FClassProperty clss => $"{clss.MetaClass?.Name ?? "UNKNOWN"}",
+                FSoftClassProperty softClass => $"{softClass.MetaClass?.Name ?? "UNKNOWN"}",
                 _ => objct.PropertyClass?.Name ?? "UNKNOWN"
             },
-            FPackageIndex pkg => pkg.ResolvedObject.Class.Name.ToString() ?? "Package",
+            FPackageIndex pkg => pkg?.ResolvedObject?.Class?.Name.ToString() ?? "Package",
             FName fme => fme.PlainText.Contains("::") ? fme.PlainText.Split("::")[0] : fme.PlainText ?? "FName",
             FEnumProperty enm => enm.Enum?.Name.ToString() ?? "Enum",
             FByteProperty bt => bt.Enum.ResolvedObject?.Name.Text ?? "Byte",

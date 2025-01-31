@@ -5,7 +5,6 @@ using CUE4Parse.UE4.Objects.Engine;
 using CUE4Parse.UE4.Kismet;
 using CUE4Parse.UE4.Assets;
 using CUE4Parse.UE4.Objects.Core.Math;
-using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Assets.Exports.Verse;
 using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Assets.Objects.Properties;
@@ -16,26 +15,29 @@ using BlueRange.Settings;
 using BlueRange.Utils;
 using Serilog;
 using Spectre.Console;
+using System.Globalization;
 
 namespace BlueRange;
 
 public static class Program
 {
-    private static bool IsVerse = false;
+    private static bool _isVerse = false;
+  
     private class StatementInfo
     {
         public int Index { get; set; }
         public int LineNum { get; set; }
     }
-    private static List<StatementInfo> statementIndices = new List<StatementInfo>();
-    private static List<int> jumpCodeOffsets = new List<int>();
-    private static string? ProcessTextProperty(FKismetPropertyPointer property)
+    private static List<StatementInfo> _statementIndices = new List<StatementInfo>();
+    private static List<int> jumpCodeOffsets = new List<int>(); // someone please fix labels I beg
+    */
+    private static string ProcessTextProperty(FKismetPropertyPointer property)
     {
         if (property.New is null)
         {
-            return property.Old.Name;
+            return property.Old?.Name ?? string.Empty;
         }
-        if (IsVerse)
+        if (_isVerse)
         {
             return Regex.Replace(string.Join('.', property.New.Path.Select(n => n.Text)), @"^__verse_0x[0-9A-Fa-f]+_", "");
         }
@@ -43,8 +45,7 @@ public static class Program
     }
     private static DefaultFileProvider Provider => ApplicationService.CUE4Parse.Provider;
 
-    public static async Task Main(string[] args)
-    {
+    public static async Task Main(string[] args)     {
         try
         {
             await ApplicationService.Initialize().ConfigureAwait(false);
@@ -63,354 +64,494 @@ public static class Program
             {
                 Log.Error("Package is not of type AbstractUePackage but instead of type '{0}'", package.GetType());
                 return;
+#endif
             }
 
             var outputBuilder = new StringBuilder();
 
-            var blueprintGeneratedClass = package?.ExportsLazy.Where(export => export.Value is UBlueprintGeneratedClass).Select(export => (UBlueprintGeneratedClass) export.Value).FirstOrDefault();
-            var VerseClass = package?.ExportsLazy.Where(export => export.Value is UVerseClass).Select(export => (UVerseClass) export.Value).FirstOrDefault();
+            var files = new Dictionary<string, CUE4Parse.FileProvider.Objects.GameFile[]>();
 
-            if (VerseClass != null) IsVerse = true;
-            if (blueprintGeneratedClass != null || IsVerse)
+            if (string.IsNullOrEmpty(blueprintPath) || blueprintPath.Length < 1)
             {
-                var mainClass = blueprintGeneratedClass?.Name ?? VerseClass?.Name;
-                var superStructName = blueprintGeneratedClass?.SuperStruct.Name ?? VerseClass?.SuperStruct.Name;
-                outputBuilder.AppendLine($"class {SomeUtils.GetPrefix(blueprintGeneratedClass?.GetType().Name ?? VerseClass?.GetType().Name)}{mainClass} : public {SomeUtils.GetPrefix(blueprintGeneratedClass?.GetType().Name ?? VerseClass?.GetType().Name)}{superStructName}\n{{\npublic:");
-
-                var stringsarr = new List<string>();
-                foreach (var export in package.ExportsLazy)
-                {
-                    if (export.Value is not UBlueprintGeneratedClass)
-                    {
-                        if (export.Value.Name.StartsWith("Default__") && export.Value.Name.EndsWith(mainClass))
-                        {
-                            var exportObject = (UObject) export.Value;
-                            foreach (var key in exportObject.Properties)
-                            {
-                                stringsarr.Add(key.Name.PlainText);
-                                string placeholder = $"{key.Name}placenolder";
-                                string result = key.Tag.GenericValue?.ToString();
-                                string keyName = key.Name.PlainText.Replace(" ", "");
-
-                                var PropertyTag = key.Tag.GetValue(typeof(object));
-
-                                void ShouldAppend(string value)
-                                {
-                                    if (outputBuilder.ToString().Contains(placeholder))
-                                    {
-                                        outputBuilder.Replace(placeholder, value);
-                                    }
-                                    else
-                                    {
-                                        outputBuilder.AppendLine($"\t{SomeUtils.GetPropertyType(PropertyTag)} {keyName} = {value};");
-                                    }
-                                }
-
-                                if (key.Tag.GenericValue is FScriptStruct structTag)
-                                {
-                                    if (structTag.StructType is FVector vector)
-                                    {
-                                        ShouldAppend($"FVector({vector.X}, {vector.Y}, {vector.Z})");
-                                    }
-                                    else if (structTag.StructType is TIntVector3<int> vector3)
-                                    {
-                                        ShouldAppend($"FVector({vector3.X}, {vector3.Y}, {vector3.Z})");
-                                    }
-                                    else if (structTag.StructType is TIntVector3<float> floatVector3)
-                                    {
-                                        ShouldAppend($"FVector({floatVector3.X}, {floatVector3.Y}, {floatVector3.Z})");
-                                    }
-                                    else if (structTag.StructType is TIntVector2<float> floatVector2)
-                                    {
-                                        ShouldAppend($"FVector2D({floatVector2.X}, {floatVector2.Y})");
-                                    }
-                                    else if (structTag.StructType is FVector2D vector2d)
-                                    {
-                                        ShouldAppend($"FVector2D({vector2d.X}, {vector2d.Y})");
-                                    }
-                                    else if (structTag.StructType is FRotator rotator)
-                                    {
-                                        ShouldAppend($"FRotator({rotator.Pitch}, {rotator.Yaw}, {rotator.Roll})");
-                                    }
-                                    else if (structTag.StructType is FStructFallback fallback)
-                                    {
-                                        string formattedTags;
-                                        if (fallback.Properties.Count > 0)
-                                        {
-                                            formattedTags = "[\n" + string.Join(",\n", fallback.Properties.Select(tag =>
-                                            {
-                                                string tagDataFormatted;
-                                                if (tag.Tag is TextProperty text)
-                                                {
-                                                    tagDataFormatted = $"\"{text.Value.Text}\"";
-                                                }
-                                                else if (tag.Tag is NameProperty name)
-                                                {
-                                                    tagDataFormatted = $"\"{name.Value.Text}\"";
-                                                }
-                                                else if (tag.Tag is ObjectProperty objectprop)
-                                                {
-                                                    tagDataFormatted = $"\"{objectprop.Value}\"";
-                                                }
-                                                else
-                                                {
-                                                    tagDataFormatted = $"\"{tag.Tag.GenericValue}\"";
-                                                }
-                                                return $"\t\t\"{tag.Name}\": {tagDataFormatted}";
-                                            })) + "\n\t]";
-                                        }
-                                        else
-                                        {
-                                            formattedTags = "{}";
-                                        }
-                                        ShouldAppend(formattedTags);
-                                    }
-                                    else if (structTag.StructType is FGameplayTagContainer gameplayTag)
-                                    {
-                                        var tags = gameplayTag.GameplayTags.ToList();
-                                        if (tags.Count > 1)
-                                        {
-                                            var formattedTags = "[\n" + string.Join(",\n", tags.Select(tag => $"\t\t\"{tag.TagName}\"")) + "\n\t]";
-                                            ShouldAppend(formattedTags);
-                                        }
-                                        else
-                                        {
-                                            ShouldAppend($"\"{tags.First().TagName}\"");
-                                        }
-                                    }
-                                    else
-                                    {
-                                        //Console.WriteLine($"Unknown struct type: {structTag.StructType.GetType().Name}");
-                                        ShouldAppend($"\"{result}\"");
-                                    }
-                                }
-                                else if (key.Tag.GetType().Name == "ObjectProperty" || key.Tag.GetType().Name == "TextProperty" || key.PropertyType == "StrProperty" || key.PropertyType == "NameProperty" || key.PropertyType == "ClassProperty")
-                                {
-                                    ShouldAppend($"\"{result}\"");
-                                }
-                                else if (key.Tag.GenericValue is UScriptSet set)
-                                {
-                                    var formattedSet = "[\n" + string.Join(",\n", set.Properties.Select(p => $"\t\"{p.GenericValue}\"")) + "\n\t]";
-                                    ShouldAppend(formattedSet);
-                                }
-                                else if (key.Tag.GenericValue is UScriptMap map)
-                                {
-                                    var formattedMap = "[\n" + string.Join(",\n", map.Properties.Select(kvp => $"\t{{\n\t\t\"{kvp.Key}\": \"{kvp.Value}\"\n\t}}")) + "\n\t]";
-                                    ShouldAppend(formattedMap);
-                                }
-                                else if (key.Tag.GenericValue is UScriptArray array)
-                                {
-                                    var formattedArray = "[\n" + string.Join(",\n", array.Properties.Select(p =>
-                                    {
-                                        if (p.GenericValue is FScriptStruct vectorInArray && vectorInArray.StructType is FVector vector)
-                                        {
-                                            return $"FVector({vector.X}, {vector.Y}, {vector.Z})";
-                                        }
-                                        if (p.GenericValue is FScriptStruct vector2dInArray && vector2dInArray.StructType is FVector2D vector2d)
-                                        {
-                                            return $"FVector2D({vector2d.X}, {vector2d.Y})";
-                                        }
-                                        if (p.GenericValue is FScriptStruct structInArray && structInArray.StructType is FRotator rotator)
-                                        {
-                                            return $"FRotator({rotator.Pitch}, {rotator.Yaw}, {rotator.Roll})";
-                                        }
-                                        else if (p.GenericValue is FScriptStruct fallbacksInArray && fallbacksInArray.StructType is FStructFallback fallback)
-                                        {
-                                            string formattedTags;
-                                            if (fallback.Properties.Count > 0)
-                                            {
-                                                formattedTags = "\t[\n" + string.Join(",\n", fallback.Properties.Select(tag =>
-                                                {
-                                                    string tagDataFormatted;
-                                                    if (tag.Tag is TextProperty text)
-                                                    {
-                                                        tagDataFormatted = $"\"{text.Value.Text}\"";
-                                                    }
-                                                    else if (tag.Tag is NameProperty name)
-                                                    {
-                                                        tagDataFormatted = $"\"{name.Value.Text}\"";
-                                                    }
-                                                    else if (tag.Tag is ObjectProperty objectprop)
-                                                    {
-                                                        tagDataFormatted = $"\"{objectprop.Value}\"";
-                                                    }
-                                                    else
-                                                    {
-                                                        tagDataFormatted = $"\"{tag.Tag.GenericValue}\"";
-                                                    }
-                                                    return $"\t\t\"{tag.Name}\": {tagDataFormatted}";
-                                                })) + "\n\t]";
-                                            }
-                                            else
-                                            {
-                                                formattedTags = "{}";
-                                            }
-                                            return formattedTags;
-                                        }
-                                        else if (p.GenericValue is FScriptStruct gameplayTagsInArray && gameplayTagsInArray.StructType is FGameplayTagContainer gameplayTag)
-                                        {
-                                            var tags = gameplayTag.GameplayTags.ToList();
-                                            if (tags.Count > 1)
-                                            {
-                                                var formattedTags = "[\n" + string.Join(",\n", tags.Select(tag => $"\t\t\"{tag.TagName}\"")) + "\n\t]";
-                                                return formattedTags;
-                                            }
-                                            else
-                                            {
-                                                return $"\"{tags.First().TagName}\"";
-                                            }
-                                        }
-
-                                        return $"\t\t\"{p.GenericValue}\"";
-                                    })) + "\n\t]";
-                                    ShouldAppend(formattedArray);
-                                }
-                                else if (key.Tag.GenericValue is bool boolResult)
-                                {
-                                    ShouldAppend(boolResult.ToString().ToLower());
-                                }
-                                else
-                                {
-                                    ShouldAppend(result);
-                                }
-                            }
-                        }
-                        else
-                        {
-                            //outputBuilder.Append($"\nType: {export.Value.Name}");
-                        }
-                    }
-                }
-
-                var childProperties = blueprintGeneratedClass?.ChildProperties ?? VerseClass?.ChildProperties;
-                foreach (FProperty property in childProperties)
-                {
-                    if (!stringsarr.Contains(property.Name.PlainText))
-                        outputBuilder.AppendLine($"\t{SomeUtils.GetPrefix(property.GetType().Name)}{SomeUtils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || SomeUtils.GetPropertyProperty(property) ? "*" : string.Empty)} {property.Name.PlainText.Replace(" ", "")} = {property.Name.PlainText.Replace(" ", "")}placenolder;");
-                }
-
-                var funcMapOrder = blueprintGeneratedClass?.FuncMap?.Keys.Select(fname => fname.ToString()).ToList() ?? VerseClass?.FuncMap.Keys.Select(fname => fname.ToString()).ToList();
-
-                var functions = package.ExportsLazy
-                    .Where(e => e.Value is UFunction)
-                    .Select(e => (UFunction) e.Value)
-                    .OrderBy(f =>
-                    {
-                        if (funcMapOrder != null)
-                        {
-                            var functionName = f.Name.ToString();
-                            int index = funcMapOrder.IndexOf(functionName);
-                            return index >= 0 ? index : int.MaxValue;
-                        }
-                        return int.MaxValue;
-                    })
-                    .ThenBy(f => f.Name.ToString())
-                    .ToList();
-
-                foreach (var function in functions)
-                {
-                    string argsList = "";
-                    string returnFunc = "void";
-                    if (function?.ChildProperties != null)
-                    {
-                        foreach (FProperty property in function.ChildProperties)
-                        {
-                            if (property.Name.PlainText == "ReturnValue")
-                            {
-                                returnFunc = $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{SomeUtils.GetPrefix(property.GetType().Name)}{SomeUtils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || SomeUtils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}";
-                            }
-                            else if (!(property.Name.ToString().EndsWith("_ReturnValue") ||
-                                      property.Name.ToString().StartsWith("CallFunc_") ||
-                                      property.Name.ToString().StartsWith("K2Node_") ||
-                                      property.Name.ToString().StartsWith("Temp_")) || // removes useless args
-                                      property.PropertyFlags.HasFlag(EPropertyFlags.Edit))
-                            {
-                                argsList += $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{SomeUtils.GetPrefix(property.GetType().Name)}{SomeUtils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || SomeUtils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}{(property.PropertyFlags.HasFlag(EPropertyFlags.OutParm) ? "&" : string.Empty)} {Regex.Replace(property.Name.ToString(), @"^__verse_0x[0-9A-Fa-f]+_", "")}, ";
-                            }
-                        }
-                    }
-                    argsList = argsList.TrimEnd(',', ' ');
-
-                    outputBuilder.AppendLine($"\n\t{returnFunc} {function.Name.Replace(" ", "")}({argsList})\n\t{{");
-                    if (function?.ScriptBytecode != null)
-                    {
-                        foreach (KismetExpression property in function.ScriptBytecode)
-                        {
-                            ProcessExpression(property.Token, property, outputBuilder);
-                        }
-                    }
-                    else
-                    {
-                        outputBuilder.Append("\n\t // This function does not have Bytecode \n\n");
-                        outputBuilder.Append("\t}\n");
-                    }
-                }
-
-                outputBuilder.Append("\n\n}");
+                files = provider.Files.Values
+                    .GroupBy(it => it.Path.SubstringBeforeLast('/'))
+                    .ToDictionary(g => g.Key, g => g.ToArray());
             }
             else
             {
-                Console.WriteLine("No Blueprint Found nor Verse set");
-                return;
-            }
-
-            var commonOffsets = statementIndices.Select(si => si.Index).Intersect(jumpCodeOffsets).ToList();
-            if (commonOffsets.Any())
-            {
-                foreach (var offset in commonOffsets)
+                if (provider.Files.ContainsKey(blueprintPath))
                 {
-                    var statementInfo = statementIndices.First(si => si.Index == offset);
-                    var LineIndex = statementInfo.LineNum;
-
-                    string[] lines = Regex.Split(outputBuilder.ToString().Trim(), @"\r?\n|\r");
-
-                    outputBuilder = new StringBuilder(string.Join(Environment.NewLine, lines.Take(LineIndex).Concat(new[] { "\t\tLabel_" + offset.ToString() + ":" }).Concat(lines.Skip(LineIndex))
-                    ));
-
+                    files[blueprintPath] = new[] { provider.Files[blueprintPath] };
                 }
             }
 
-            int targetIndex = outputBuilder.ToString().IndexOf("placenolder");
-            string pattern = $@"\w+placenolder";
-            string updatedOutput = Regex.Replace(outputBuilder.ToString(), pattern, "nullptr");
-            string exeDirectory = AppDomain.CurrentDomain.BaseDirectory;
-            string outputFilePath = Path.Combine(exeDirectory, "Output.cpp");
-            File.WriteAllText(outputFilePath, updatedOutput);
+            int index = -1;
+            int totalGameFiles = files.Count;
 
-            Console.WriteLine($"Output written to: {outputFilePath}");
-            await AppSettings.Save().ConfigureAwait(false);
+
+            // loop from https://github.com/FabianFG/CUE4Parse/blob/master/CUE4Parse.Example/Exporter.cs#L104
+            foreach (var (folder, packages) in files)
+            {
+                Parallel.ForEach(packages, package =>
+                {
+                    try {
+                        if (!package.IsUE4Package) return;
+                    index++;
+                    Console.WriteLine($"Processing {package.Path} ({index + 1}/{totalGameFiles})");
+                    var pkg = provider.LoadPackage(package);
+
+                    for (var i = 0; i < pkg.ExportMapLength; i++)
+                    {
+                        var pointer = new FPackageIndex(pkg, i + 1).ResolvedObject;
+                        if (pointer?.Object is null) continue;
+
+                        var dummy = ((AbstractUePackage) pkg).ConstructObject(
+                            pointer.Class?.Object?.Value as UStruct, pkg);
+                        switch (dummy)
+                        {
+                            case UBlueprintGeneratedClass _:
+                            {
+                                var outputBuilder = new StringBuilder();
+
+                                var blueprintGeneratedClass = pkg.ExportsLazy
+                                    .Where(export => export.Value is UBlueprintGeneratedClass)
+                                    .Select(export => (UBlueprintGeneratedClass) export.Value).FirstOrDefault();
+                                var verseClass = pkg.ExportsLazy.Where(export => export.Value is UVerseClass)
+                                    .Select(export => (UVerseClass) export.Value).FirstOrDefault();
+
+                                if (verseClass != null)
+                                    _isVerse = true;
+                                if (blueprintGeneratedClass != null || _isVerse)
+                                {
+                                    var mainClass = blueprintGeneratedClass?.Name ?? verseClass?.Name;
+                                    var superStructName = blueprintGeneratedClass?.SuperStruct.Name ??
+                                                          verseClass?.SuperStruct.Name;
+                                    outputBuilder.AppendLine(
+                                        $"class {Utils.GetPrefix(blueprintGeneratedClass?.GetType().Name ?? verseClass?.GetType().Name)}{mainClass} : public {Utils.GetPrefix(blueprintGeneratedClass?.GetType().Name ?? verseClass?.GetType().Name)}{superStructName}\n{{\npublic:");
+
+                                    var stringsarray = new List<string>();
+                                    foreach (var export in pkg.ExportsLazy)
+                                    {
+                                        if (export.Value is not UBlueprintGeneratedClass)
+                                        {
+                                            if (export.Value.Name.StartsWith("Default__") &&
+                                                export.Value.Name.EndsWith(mainClass ?? string.Empty))
+                                            {
+                                                var exportObject = export.Value;
+                                                foreach (var key in exportObject.Properties)
+                                                {
+                                                    stringsarray.Add(key.Name.PlainText);
+                                                    string placeholder = $"{key.Name}placenolder";
+                                                    string result = key.Tag.GenericValue.ToString();
+                                                    string keyName = key.Name.PlainText.Replace(" ", "");
+
+                                                    var propertyTag = key.Tag.GetValue(typeof(object));
+
+                                                    void ShouldAppend(string? value)
+                                                    {
+                                                        if (value == null) return;
+                                                        if (outputBuilder.ToString().Contains(placeholder))
+                                                        {
+                                                            outputBuilder.Replace(placeholder, value);
+                                                        }
+                                                        else
+                                                        {
+                                                            outputBuilder.AppendLine(
+                                                                $"\t{Utils.GetPropertyType(propertyTag)} {keyName} = {value};");
+                                                        }
+                                                    }
+
+                                                    if (key.Tag.GenericValue is FScriptStruct structTag)
+                                                    {
+                                                        if (structTag.StructType is FVector vector)
+                                                        {
+                                                            ShouldAppend(
+                                                                $"FVector({vector.X}, {vector.Y}, {vector.Z})");
+                                                        }
+                                                        else if (structTag.StructType is TIntVector3<int> vector3)
+                                                        {
+                                                            ShouldAppend(
+                                                                $"FVector({vector3.X}, {vector3.Y}, {vector3.Z})");
+                                                        }
+                                                        else if (structTag.StructType is TIntVector3<float>
+                                                                 floatVector3)
+                                                        {
+                                                            ShouldAppend(
+                                                                $"FVector({floatVector3.X}, {floatVector3.Y}, {floatVector3.Z})");
+                                                        }
+                                                        else if (structTag.StructType is TIntVector2<float>
+                                                                 floatVector2)
+                                                        {
+                                                            ShouldAppend(
+                                                                $"FVector2D({floatVector2.X}, {floatVector2.Y})");
+                                                        }
+                                                        else if (structTag.StructType is FVector2D vector2d)
+                                                        {
+                                                            ShouldAppend($"FVector2D({vector2d.X}, {vector2d.Y})");
+                                                        }
+                                                        else if (structTag.StructType is FRotator rotator)
+                                                        {
+                                                            ShouldAppend(
+                                                                $"FRotator({rotator.Pitch}, {rotator.Yaw}, {rotator.Roll})");
+                                                        }
+                                                        else if (structTag.StructType is FStructFallback fallback)
+                                                        {
+                                                            string formattedTags;
+                                                            if (fallback.Properties.Count > 0)
+                                                            {
+                                                                formattedTags = "[\n" + string.Join(",\n",
+                                                                    fallback.Properties.Select(tag =>
+                                                                    {
+                                                                        string tagDataFormatted;
+                                                                        if (tag.Tag is TextProperty text)
+                                                                        {
+                                                                            tagDataFormatted = $"\"{text.Value.Text}\"";
+                                                                        }
+                                                                        else if (tag.Tag is NameProperty name)
+                                                                        {
+                                                                            tagDataFormatted = $"\"{name.Value.Text}\"";
+                                                                        }
+                                                                        else if (tag.Tag is ObjectProperty objectproperty)
+                                                                        {
+                                                                            tagDataFormatted = $"\"{objectproperty.Value}\"";
+                                                                        }
+                                                                        else
+                                                                        {
+                                                                            tagDataFormatted = $"\"{tag.Tag.GenericValue}\"";
+                                                                        }
+
+                                                                        return $"\t\t{{ \"{tag.Name}\": {tagDataFormatted} }}";
+                                                                    })) + "\n\t]";
+                                                            }
+                                                            else
+                                                            {
+                                                                formattedTags = "[]";
+                                                            }
+
+                                                            ShouldAppend(formattedTags);
+                                                        }
+                                                        else if (structTag.StructType is FGameplayTagContainer
+                                                                 gameplayTag)
+                                                        {
+                                                            var tags = gameplayTag.GameplayTags.ToList();
+                                                            if (tags.Count > 1)
+                                                            {
+                                                                var formattedTags = "[\n" + string.Join(",\n",
+                                                                        tags.Select(tag =>
+                                                                            $"\t\t\"{tag.TagName}\"")) +
+                                                                    "\n\t]";
+                                                                ShouldAppend(formattedTags);
+                                                            }
+                                                            else if (tags.Any())
+                                                            {
+                                                                ShouldAppend($"\"{tags.First().TagName}\"");
+                                                            } else
+                                                            {
+                                                                ShouldAppend("[]");
+                                                            }
+                                                        }
+                                                        else if (structTag.StructType is FLinearColor color)
+                                                        {
+                                                            ShouldAppend($"FLinearColor({color.R}, {color.G}, {color.B}, {color.A})");
+                                                        }
+                                                        else
+                                                        {
+                                                            //Console.WriteLine($"Unknown struct type: {structTag.StructType.GetType().Name}");
+                                                            ShouldAppend($"\"{result}\"");
+                                                        }
+                                                    }
+                                                    else if (key.Tag.GetType().Name == "ObjectProperty" ||
+                                                             key.Tag.GetType().Name == "TextProperty" ||
+                                                             key.PropertyType == "StrProperty" ||
+                                                             key.PropertyType == "NameProperty" ||
+                                                             key.PropertyType == "ClassProperty")
+                                                    {
+                                                        ShouldAppend($"\"{result}\"");
+                                                    }
+                                                    else if (key.Tag.GenericValue is UScriptSet set)
+                                                    {
+                                                        var formattedSet = "[\n" + string.Join(",\n",
+                                                                               set.Properties.Select(p =>
+                                                                                   $"\t\"{p.GenericValue}\"")) +
+                                                                           "\n\t]";
+                                                        ShouldAppend(formattedSet);
+                                                    }
+                                                    else if (key.Tag.GenericValue is UScriptMap map)
+                                                    {
+                                                        var formattedMap = "[\n" + string.Join(",\n",
+                                                                               map.Properties.Select(kvp =>
+                                                                                   $"\t{{\n\t\t\"{kvp.Key}\": \"{kvp.Value}\"\n\t}}")) +
+                                                                           "\n\t]";
+                                                        ShouldAppend(formattedMap);
+                                                    }
+                                                    else if (key.Tag.GenericValue is UScriptArray array)
+                                                    {
+                                                        var formattedArray = "[\n" + string.Join(",\n",
+                                                            array.Properties.Select(p =>
+                                                            {
+                                                                if (p.GenericValue is FScriptStruct vectorInArray &&
+                                                                    vectorInArray.StructType is FVector vector)
+                                                                {
+                                                                    return
+                                                                        $"FVector({vector.X}, {vector.Y}, {vector.Z})";
+                                                                }
+
+                                                                if (p.GenericValue is FScriptStruct
+                                                                        vector2dInArray &&
+                                                                    vector2dInArray
+                                                                        .StructType is FVector2D vector2d)
+                                                                {
+                                                                    return $"FVector2D({vector2d.X}, {vector2d.Y})";
+                                                                }
+
+                                                                if (p.GenericValue is FScriptStruct structInArray &&
+                                                                    structInArray.StructType is FRotator rotator)
+                                                                {
+                                                                    return
+                                                                        $"FRotator({rotator.Pitch}, {rotator.Yaw}, {rotator.Roll})";
+                                                                }
+                                                                else if
+                                                                    (p.GenericValue is FScriptStruct
+                                                                         fallbacksInArray &&
+                                                                     fallbacksInArray.StructType is FStructFallback
+                                                                         fallback)
+                                                                {
+                                                                    string formattedTags;
+                                                                    if (fallback.Properties.Count > 0)
+                                                                    {
+                                                                        formattedTags = "\t[\n" + string.Join(",\n",
+                                                                            fallback.Properties.Select(tag =>
+                                                                            {
+                                                                                string tagDataFormatted;
+                                                                                if (tag.Tag is TextProperty text)
+                                                                                {
+                                                                                    tagDataFormatted =
+                                                                                        $"\"{text.Value.Text}\"";
+                                                                                }
+                                                                                else if (tag.Tag is NameProperty
+                                                                                     name)
+                                                                                {
+                                                                                    tagDataFormatted =
+                                                                                        $"\"{name.Value.Text}\"";
+                                                                                }
+                                                                                else if (tag.Tag is ObjectProperty
+                                                                                 objectproperty)
+                                                                                {
+                                                                                    tagDataFormatted =
+                                                                                        $"\"{objectproperty.Value}\"";
+                                                                                }
+                                                                                else
+                                                                                {
+                                                                                    tagDataFormatted =
+                                                                                        $"\"{tag.Tag.GenericValue}\"";
+                                                                                }
+
+                                                                                return
+                                                                                    $"\t\t\"{tag.Name}\": {tagDataFormatted}";
+                                                                            })) + "\n\t]";
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        formattedTags = "{}";
+                                                                    }
+
+                                                                    return formattedTags;
+                                                                }
+                                                                else if
+                                                                    (p.GenericValue is FScriptStruct
+                                                                         gameplayTagsInArray &&
+                                                                     gameplayTagsInArray.StructType is
+                                                                         FGameplayTagContainer gameplayTag)
+                                                                {
+                                                                    var tags = gameplayTag.GameplayTags.ToList();
+                                                                    if (tags.Count > 1)
+                                                                    {
+                                                                        var formattedTags =
+                                                                            "[\n" + string.Join(",\n",
+                                                                                tags.Select(tag =>
+                                                                                    $"\t\t\"{tag.TagName}\"")) +
+                                                                            "\n\t]";
+                                                                        return formattedTags;
+                                                                    }
+                                                                    else
+                                                                    {
+                                                                        return $"\"{tags.First().TagName}\"";
+                                                                    }
+                                                                }
+
+                                                                return $"\t\t\"{p.GenericValue}\"";
+                                                            })) + "\n\t]";
+                                                        ShouldAppend(formattedArray);
+                                                    }
+                                                    else if (key.Tag.GenericValue is bool boolResult)
+                                                    {
+                                                        ShouldAppend(boolResult.ToString().ToLower());
+                                                    }
+                                                    else
+                                                    {
+                                                        ShouldAppend(result);
+                                                    }
+                                                }
+                                            }
+                                            else
+                                            {
+                                                //outputBuilder.Append($"\nType: {export.Value.Name}");
+                                            }
+                                        }
+                                    }
+
+                                    var childProperties = blueprintGeneratedClass?.ChildProperties ?? verseClass?.ChildProperties;
+                                    foreach (FProperty property in childProperties)
+                                    {
+                                        if (!stringsarray.Contains(property.Name.PlainText))
+                                            outputBuilder.AppendLine(
+                                                $"\t{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || Utils.GetPropertyProperty(property) ? "*" : string.Empty)} {property.Name.PlainText.Replace(" ", "")} = {property.Name.PlainText.Replace(" ", "")}placenolder;");
+                                    }
+
+                                    var funcMapOrder =
+                                        blueprintGeneratedClass?.FuncMap?.Keys.Select(fname => fname.ToString())
+                                            .ToList() ?? verseClass?.FuncMap.Keys.Select(fname => fname.ToString())
+                                            .ToList();
+
+                                    var functions = pkg.ExportsLazy
+                                        .Where(e => e.Value is UFunction)
+                                        .Select(e => (UFunction) e.Value)
+                                        .OrderBy(f =>
+                                        {
+                                            if (funcMapOrder != null)
+                                            {
+                                                var functionName = f.Name.ToString();
+                                                int indexx = funcMapOrder.IndexOf(functionName);
+                                                return indexx >= 0 ? indexx : int.MaxValue;
+                                            }
+
+                                            return int.MaxValue;
+                                        })
+                                        .ThenBy(f => f.Name.ToString())
+                                        .ToList();
+
+                                    foreach (var function in functions)
+                                    {
+                                        string argsList = "";
+                                        string returnFunc = "void";
+                                        if (function?.ChildProperties != null)
+                                        {
+                                            foreach (FProperty property in function.ChildProperties)
+                                            {
+                                                if (property.Name.PlainText == "ReturnValue")
+                                                {
+                                                    returnFunc =
+                                                        $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || Utils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}";
+                                                }
+                                                else if (!(property.Name.ToString().EndsWith("_ReturnValue") ||
+                                                           property.Name.ToString().StartsWith("CallFunc_") ||
+                                                           property.Name.ToString().StartsWith("K2Node_") ||
+                                                           property.Name.ToString()
+                                                               .StartsWith("Temp_")) || // removes useless args
+                                                         property.PropertyFlags.HasFlag(EPropertyFlags.Edit))
+                                                {
+                                                    argsList +=
+                                                        $"{(property.PropertyFlags.HasFlag(EPropertyFlags.ConstParm) ? "const " : string.Empty)}{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || Utils.GetPrefix(property.GetType().Name) == "U" ? "*" : string.Empty)}{(property.PropertyFlags.HasFlag(EPropertyFlags.OutParm) ? "&" : string.Empty)} {Regex.Replace(property.Name.ToString(), @"^__verse_0x[0-9A-Fa-f]+_", "")}, ";
+                                                }
+                                            }
+                                        }
+
+                                        argsList = argsList.TrimEnd(',', ' ');
+
+                                        outputBuilder.AppendLine(
+                                            $"\n\t{returnFunc} {function.Name.Replace(" ", "")}({argsList})\n\t{{");
+                                        if (function?.ScriptBytecode != null)
+                                        {
+                                            foreach (KismetExpression property in function.ScriptBytecode)
+                                            {
+                                                ProcessExpression(property.Token, property, outputBuilder);
+                                            }
+                                        }
+                                        else
+                                        {
+                                            outputBuilder.Append(
+                                                "\n\t // This function does not have Bytecode \n\n");
+                                            outputBuilder.Append("\t}\n");
+                                        }
+                                    }
+
+                                    outputBuilder.Append("\n\n}");
+                                }
+                                else
+                                {
+                                    Console.WriteLine($"No Blueprint Found nor Verse set in \"{package.Path}\"");
+                                    continue;
+                                }
+
+                                /*var commonOffsets = statementIndices.Select(si => si.Index).Intersect(jumpCodeOffsets).ToList();
+                                if (commonOffsets.Any())
+                                {
+                                    foreach (var offset in commonOffsets)
+                                    {
+                                        var statementInfo = statementIndices.First(si => si.Index == offset);
+                                        var LineIndex = statementInfo.LineNum;
+
+                                        string[] lines = Regex.Split(outputBuilder.ToString().Trim(), @"\r?\n|\r");
+
+                                        outputBuilder = new StringBuilder(string.Join(Environment.NewLine, lines.Take(LineIndex).Concat(new[] { "\t\tLabel_" + offset.ToString() + ":" }).Concat(lines.Skip(LineIndex))
+                                        ));
+
+                                    }
+                                }*/
+
+                                string pattern = $@"\w+placenolder";
+                                string updatedOutput = Regex.Replace(outputBuilder.ToString(), pattern, "nullptr");
+                                string blueprintDirRel = Path.GetDirectoryName(package.Path ?? string.Empty);
+                                string blueprintDirOutput = Path.Combine(exeDirectory, blueprintDirRel ?? string.Empty);
+                                Directory.CreateDirectory(blueprintDirOutput);
+                                string outputFilePath = Path.Combine(blueprintDirOutput, $"{package.Name.Replace(".uasset", "")}.cpp");
+                                File.WriteAllText(outputFilePath, updatedOutput);
+
+                                Console.WriteLine($"Output written to: {outputFilePath}");
+                                break;
+                        }
+                    }
+                    }
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Error Processing: {package.Path} {ex.Message}\n{ex.StackTrace}");
+                    }
+                });
+            }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"An error occurred: {ex.Message}\n{ex.StackTrace}");
         }
     }
+
     private static void ProcessExpression(EExprToken token, KismetExpression expression, StringBuilder outputBuilder, bool isParameter = false)
     {
-        statementIndices.Add(new StatementInfo { Index = expression.StatementIndex, LineNum = Regex.Split(outputBuilder.ToString().Trim(), @"\r?\n|\r").Length });
+        //_statementIndices.Add(new StatementInfo { Index = expression.StatementIndex, LineNum = Regex.Split(outputBuilder.ToString().Trim(), @"\r?\n|\r").Length });
         switch (token)
         {
             case EExprToken.EX_LetValueOnPersistentFrame:
                 {
                     EX_LetValueOnPersistentFrame op = (EX_LetValueOnPersistentFrame) expression;
                     EX_VariableBase opp = (EX_VariableBase) op.AssignmentExpression;
-                    var nerd = ProcessTextProperty(op.DestinationProperty);
-                    var nerdd = ProcessTextProperty(opp.Variable);
+                    var destination = ProcessTextProperty(op.DestinationProperty);
+                    var variable = ProcessTextProperty(opp.Variable);
 
                     if (!isParameter)
                     {
-                        outputBuilder.Append($"\t\t{(nerd.Contains("K2Node_") ? $"UberGraphFrame->{nerd}" : nerd)} = {nerdd};\n\n"); // hardcoded but works
+                        outputBuilder.Append($"\t\t{(destination.Contains("K2Node_") ? $"UberGraphFrame->{destination}" : destination)} = {variable};\n\n"); // hardcoded but works
                     }
                     else
                     {
-                        outputBuilder.Append($"\t\t{(nerd.Contains("K2Node_") ? $"UberGraphFrame->{nerd}" : nerd)} = {nerdd}");
+                        outputBuilder.Append($"\t\t{(destination.Contains("K2Node_") ? $"UberGraphFrame->{destination}" : destination)} = {variable}");
                     }
                     break;
                 }
             case EExprToken.EX_LocalFinalFunction:
                 {
                     EX_FinalFunction op = (EX_FinalFunction) expression;
-                    KismetExpression[] opp = (KismetExpression[]) op.Parameters;
+                    KismetExpression[] opp = op.Parameters;
                     if (isParameter)
                     {
                         outputBuilder.Append($"{op.StackNode.Name.Replace(" ", "")}(");
@@ -421,7 +562,7 @@ public static class Program
                     }
                     else
                     {
-                        outputBuilder.Append($"\t\t{SomeUtils.GetPrefix(op?.StackNode?.ResolvedObject?.Outer?.GetType()?.Name)}{op?.StackNode?.Name.Replace(" ", "")}(");
+                        outputBuilder.Append($"\t\t{Utils.GetPrefix(op?.StackNode?.ResolvedObject?.Outer?.GetType()?.Name ?? string.Empty)}{op?.StackNode?.Name.Replace(" ", "")}(");
                     }
 
                     for (int i = 0; i < opp.Length; i++)
@@ -434,20 +575,13 @@ public static class Program
                             outputBuilder.Append(", ");
                         }
                     }
-                    if (isParameter)
-                    {
-                        outputBuilder.Append($")");
-                    }
-                    else
-                    {
-                        outputBuilder.Append($");\n");
-                    }
+                    outputBuilder.Append(isParameter ? ")" : ");\n");
                     break;
                 }
             case EExprToken.EX_FinalFunction:
                 {
                     EX_FinalFunction op = (EX_FinalFunction) expression;
-                    KismetExpression[] opp = (KismetExpression[]) op.Parameters;
+                    KismetExpression[] opp = op.Parameters;
                     if (isParameter)
                     {
                         outputBuilder.Append($"{op.StackNode.Name.Replace(" ", "")}(");
@@ -471,22 +605,15 @@ public static class Program
                             outputBuilder.Append(", ");
                         }
                     }
-                    if (isParameter)
-                    {
-                        outputBuilder.Append($")");
-                    }
-                    else
-                    {
-                        outputBuilder.Append($");\n\n");
-                    }
+                    outputBuilder.Append(isParameter ? ")" : ");\n\n");
                     break;
                 }
             case EExprToken.EX_CallMath:
                 {
                     EX_FinalFunction op = (EX_FinalFunction) expression;
-                    KismetExpression[] opp = (KismetExpression[]) op.Parameters;
-                    outputBuilder.Append(isParameter ? String.Empty : "\t\t");
-                    outputBuilder.Append($"{SomeUtils.GetPrefix(op.StackNode.ResolvedObject.Outer.GetType().Name)}{op.StackNode.ResolvedObject.Outer.Name.ToString().Replace(" ", "")}::{op.StackNode.Name}(");
+                    KismetExpression[] opp = op.Parameters;
+                    outputBuilder.Append(isParameter ? string.Empty : "\t\t");
+                    outputBuilder.Append($"{Utils.GetPrefix(op.StackNode.ResolvedObject.Outer.GetType().Name)}{op.StackNode.ResolvedObject.Outer.Name.ToString().Replace(" ", "")}::{op.StackNode.Name}(");
                     for (int i = 0; i < opp.Length; i++)
                     {
                         if (opp.Length > 4)
@@ -497,21 +624,14 @@ public static class Program
                             outputBuilder.Append(", ");
                         }
                     }
-                    if (isParameter)
-                    {
-                        outputBuilder.Append($")");
-                    }
-                    else
-                    {
-                        outputBuilder.Append($");\n\n");
-                    }
+                    outputBuilder.Append(isParameter ? ")" : ");\n\n");
                     break;
                 }
             case EExprToken.EX_LocalVirtualFunction:
             case EExprToken.EX_VirtualFunction:
                 {
                     EX_VirtualFunction op = (EX_VirtualFunction) expression;
-                    KismetExpression[] opp = (KismetExpression[]) op.Parameters;
+                    KismetExpression[] opp = op.Parameters;
 
                     if (isParameter)
                     {
@@ -531,28 +651,23 @@ public static class Program
                             outputBuilder.Append(", ");
                         }
                     }
-                    if (isParameter)
-                    {
-                        outputBuilder.Append($")");
-                    }
-                    else
-                    {
-                        outputBuilder.Append($");\n\n");
-                    }
+                    outputBuilder.Append(isParameter ? ")" : ");\n\n");
                     break;
                 }
             case EExprToken.EX_ComputedJump:
                 {
                     EX_ComputedJump op = (EX_ComputedJump) expression;
-                    if (op.CodeOffsetExpression is EX_VariableBase)
+                    if (op.CodeOffsetExpression is EX_VariableBase opp)
                     {
-                        EX_VariableBase opp = (EX_VariableBase) op.CodeOffsetExpression;
-                        outputBuilder.AppendLine($"\t\tgoto {ProcessTextProperty(((EX_VariableBase) op.CodeOffsetExpression).Variable)};\n");
+                        outputBuilder.AppendLine($"\t\tgoto {ProcessTextProperty(opp.Variable)};\n");
+                    }
+                    else if (op.CodeOffsetExpression is EX_CallMath oppMath)
+                    {
+                        ProcessExpression(oppMath.Token, oppMath, outputBuilder, true);
                     }
                     else
                     {
-                        EX_CallMath opp = (EX_CallMath) op.CodeOffsetExpression;
-                        ProcessExpression(opp.Token, opp, outputBuilder, true);
+                        Console.WriteLine("no idea how you reached this");
                     }
                     break;
                 }
@@ -567,7 +682,7 @@ public static class Program
                 }
             case EExprToken.EX_Cast:
                 {
-                    EX_Cast op = (EX_Cast) expression;// support CST_ObjectToInterface when i have a example of how it works
+                    EX_Cast op = (EX_Cast) expression;// support CST_ObjectToInterface when I have an example of how it works
 
                     if (ECastToken.CST_ObjectToBool == op.ConversionType || ECastToken.CST_InterfaceToBool == op.ConversionType)
                     {
@@ -596,13 +711,10 @@ public static class Program
                     outputBuilder.Append("TArray {");
                     foreach (KismetExpression element in op.Elements)
                     {
-                        outputBuilder.Append(" ");
+                        outputBuilder.Append(' ');
                         ProcessExpression(element.Token, element, outputBuilder);
                     }
-                    if (op.Elements.Length < 1)
-                        outputBuilder.Append("  ");
-                    else
-                        outputBuilder.Append(" ");
+                    outputBuilder.Append(op.Elements.Length < 1 ? "  " : ' ');
 
                     outputBuilder.Append("}");
                     break;
@@ -617,23 +729,12 @@ public static class Program
                     for (int i = 0; i < op.Elements.Length; i++)
                     {
                         KismetExpression element = op.Elements[i];
-                        outputBuilder.Append(" ");
+                        outputBuilder.Append(' ');
                         ProcessExpression(element.Token, element, outputBuilder);
-
-                        if (i < op.Elements.Length - 1)
-                        {
-                            outputBuilder.Append(",");
-                        }
-                        else
-                        {
-                            outputBuilder.Append(" ");
-                        }
+                        outputBuilder.Append(i < op.Elements.Length - 1 ? "," : ' ');
                     }
 
-                    if (op.Elements.Length < 1)
-                        outputBuilder.Append("  ");
-                    else
-                        outputBuilder.Append(" ");
+                    outputBuilder.Append(op.Elements.Length < 1 ? "  " : ' ');
 
                     outputBuilder.Append("};\n\n");
                     break;
@@ -648,23 +749,16 @@ public static class Program
                     for (int i = 0; i < op.Elements.Length; i++)
                     {
                         var element = op.Elements[i];
-                        outputBuilder.Append(" ");
-                        ProcessExpression(element.Token, element, outputBuilder);
+                        outputBuilder.Append(' ');
+                        ProcessExpression(element.Token, element, outputBuilder);// sometimes the start of an array is a byte not a variable
 
+                        Console.WriteLine(element.Token);
                         if (i < op.Elements.Length - 1)
                         {
-                            if (element.Token == EExprToken.EX_InstanceVariable)
-                            {
-                                outputBuilder.Append(": ");
-                            }
-                            else
-                            {
-                                outputBuilder.Append(", ");
-                            }
-                        }
-                        else
+                            outputBuilder.Append(element.Token == EExprToken.EX_InstanceVariable ? ": " : ", ");
+                        } else
                         {
-                            outputBuilder.Append(" ");
+                            outputBuilder.Append(' ');
                         }
                     }
 
@@ -732,20 +826,17 @@ public static class Program
                             outputBuilder.Append("\t\t}\n");
                         }
 
-                        if (op.DefaultTerm != null)
-                        {
-                            outputBuilder.Append("\t\tdefault:\n");
-                            outputBuilder.Append("\t\t{\n");
-                            outputBuilder.Append("\t\t    ");
-                            ProcessExpression(op.DefaultTerm.Token, op.DefaultTerm, outputBuilder);
-                            outputBuilder.Append("\n\t\t}\n\n");
-                        }
+                        outputBuilder.Append("\t\tdefault:\n");
+                        outputBuilder.Append("\t\t{\n");
+                        outputBuilder.Append("\t\t    ");
+                        ProcessExpression(op.DefaultTerm.Token, op.DefaultTerm, outputBuilder);
+                        outputBuilder.Append("\n\t\t}\n\n");
 
                         outputBuilder.Append("}\n");
                     }
                     break;
                 }
-            case EExprToken.EX_ArrayGetByRef: // i assume get array with index
+            case EExprToken.EX_ArrayGetByRef: // I assume get array with index
                 {
                     EX_ArrayGetByRef op = (EX_ArrayGetByRef) expression; // FortniteGame/Plugins/GameFeatures/FM/PilgrimCore/Content/Player/Components/BP_PilgrimPlayerControllerComponent.uasset
                     ProcessExpression(op.ArrayVariable.Token, op.ArrayVariable, outputBuilder, true);
@@ -783,34 +874,27 @@ public static class Program
                 }
             case EExprToken.EX_ObjectConst:
                 {
-                    EX_ObjectConst op = (EX_ObjectConst) expression;
-                    if (!isParameter)
-                    {
-                        outputBuilder.Append("\t\tFindObject<");
-                    }
-                    else
-                    {
-                        outputBuilder.Append("FindObject<");
-                    }
+                    EX_ObjectConst op = (EX_ObjectConst)expression;
+                    outputBuilder.Append(!isParameter ? "\t\tFindObject<" : "FindObject<");
                     string classString = op?.Value?.ResolvedObject?.Class?.ToString()?.Replace("'", "");
 
                     if (classString?.Contains(".") == true)
                     {
-                        outputBuilder.Append(SomeUtils.GetPrefix(op?.Value?.ResolvedObject?.Class.GetType().Name) + classString.Split(".")[1]);
+
+                        outputBuilder.Append(Utils.GetPrefix(op?.Value?.ResolvedObject?.Class?.GetType().Name) + classString.Split(".")[1]);
                     }
                     else
                     {
-                        outputBuilder.Append(SomeUtils.GetPrefix(op?.Value?.ResolvedObject?.Class.GetType().Name) + classString);
+                        outputBuilder.Append(Utils.GetPrefix(op?.Value?.ResolvedObject?.Class?.GetType().Name) + classString);
                     }
                     outputBuilder.Append(">(\"");
-                    outputBuilder.Append(
-                        op?.Value?.ResolvedObject?.Outer // sometimes incorrect
-                            .ToString()
-                            .Replace("'", "")
-                            .Replace(op?.Value?.ResolvedObject?.Class.ToString().Replace("'", ""), "") +
-                        "." +
-                        op.Value.Name
-                    );
+                    var resolvedObject = op?.Value?.ResolvedObject;
+                    var outerString = resolvedObject?.Outer?.ToString()?.Replace("'", "") ?? string.Empty;
+                    var outerClassString = resolvedObject?.Class?.ToString()?.Replace("'", "") ?? string.Empty;
+                    var name = op?.Value?.Name ?? string.Empty;
+
+                    outputBuilder.Append(outerString.Replace(outerClassString, "") + "." + name);
+
                     if (isParameter)
                     {
                         outputBuilder.Append("\")");
@@ -850,7 +934,7 @@ public static class Program
                     }
                     else
                     {
-                        EX_Context opp = (EX_Context) op.Delegate;
+                        //EX_Context opp = (EX_Context) op.Delegate;
                         outputBuilder.Append("\t\t");
                         ProcessExpression(op.Delegate.Token, op.Delegate, outputBuilder, true);
                         //outputBuilder.Append("->");
@@ -861,7 +945,7 @@ public static class Program
                     }
                     break;
                 }
-            case EExprToken.EX_RemoveMulticastDelegate: // everything here has been guessed not compared to actual UE but does work fine and displays all infomation
+            case EExprToken.EX_RemoveMulticastDelegate: // everything here has been guessed not compared to actual UE but does work fine and displays all information
                 {
                     EX_RemoveMulticastDelegate op = (EX_RemoveMulticastDelegate) expression;
                     if (op.Delegate.Token == EExprToken.EX_LocalVariable || op.Delegate.Token == EExprToken.EX_InstanceVariable)
@@ -874,7 +958,7 @@ public static class Program
                     }
                     else if (op.Delegate.Token != EExprToken.EX_Context)
                     {
-                        Console.WriteLine("Issue: EX_RemoveMulticastDelegate missing info: ", op.StatementIndex);
+                        Console.WriteLine("Issue: EX_RemoveMulticastDelegate missing info: {0}", op.StatementIndex);
                     }
                     else
                     {
@@ -900,7 +984,7 @@ public static class Program
             case EExprToken.EX_CallMulticastDelegate: // this also
                 {
                     EX_CallMulticastDelegate op = (EX_CallMulticastDelegate) expression;
-                    KismetExpression[] opp = (KismetExpression[]) op.Parameters;
+                    KismetExpression[] opp = op.Parameters;
                     if (op.Delegate.Token == EExprToken.EX_LocalVariable || op.Delegate.Token == EExprToken.EX_InstanceVariable)
                     {
                         outputBuilder.Append("\t\t");
@@ -920,7 +1004,7 @@ public static class Program
                     }
                     else if (op.Delegate.Token != EExprToken.EX_Context)
                     {
-                        Console.WriteLine("Issue: EX_CallMulticastDelegate missing info: ", op.StatementIndex);
+                        Console.WriteLine("Issue: EX_CallMulticastDelegate missing info: {0}", op.StatementIndex);
                     }
                     else
                     {
@@ -1010,8 +1094,8 @@ public static class Program
                 }
             case EExprToken.EX_JumpIfNot:
                 {
-                    EX_JumpIfNot op = (EX_JumpIfNot) expression;
-                    jumpCodeOffsets.Add((int) op.CodeOffset);
+                    EX_JumpIfNot op = (EX_JumpIfNot)expression;
+                    //jumpCodeOffsets.Add((int)op.CodeOffset);
                     outputBuilder.Append("\t\tif (!");
                     ProcessExpression(op.BooleanExpression.Token, op.BooleanExpression, outputBuilder, true);
                     outputBuilder.Append(") \r\n");
@@ -1022,8 +1106,8 @@ public static class Program
                 }
             case EExprToken.EX_Jump:
                 {
-                    EX_Jump op = (EX_Jump) expression;
-                    jumpCodeOffsets.Add((int) op.CodeOffset);
+                    EX_Jump op = (EX_Jump)expression;
+                    //jumpCodeOffsets.Add((int)op.CodeOffset);
                     outputBuilder.Append($"\t\tgoto Label_{op.CodeOffset};\n\n");
                     break;
                 }
@@ -1032,15 +1116,13 @@ public static class Program
             case EExprToken.EX_TextConst:
                 if (expression is EX_TextConst textConst)
                 {
-                    if (textConst.Value is FScriptText scriptText)
+                    if (textConst.Value is FScriptText { SourceString: { } scriptTextSource })
                     {
-
-                        if (scriptText.SourceString != null)
-                            ProcessExpression(scriptText.SourceString.Token, scriptText.SourceString, outputBuilder, true); // cursed sometimes will need to be correctly done
+                        ProcessExpression(scriptTextSource.Token, scriptTextSource, outputBuilder, true); // cursed sometimes will need to be correctly done
                     }
                     else
                     {
-                        outputBuilder.Append(textConst.Value.ToString());
+                        outputBuilder.Append(textConst.Value);
                     }
                 }
                 break;
@@ -1048,18 +1130,17 @@ public static class Program
                 {
                     EX_StructMemberContext op = (EX_StructMemberContext) expression;
                     ProcessExpression(op.StructExpression.Token, op.StructExpression, outputBuilder);
-                    outputBuilder.Append(".");
+                    outputBuilder.Append('.');
                     outputBuilder.Append(ProcessTextProperty(op.Property));
                     break;
                 }
 
             case EExprToken.EX_Return:
                 {
-                    EX_Return op = (EX_Return) expression;
-                    bool tocheck = op.ReturnExpression.Token == EExprToken.EX_Nothing;
+                    EX_Return op = (EX_Return)expression;
+                    bool check = op.ReturnExpression.Token == EExprToken.EX_Nothing;
                     outputBuilder.Append($"\t\treturn");
-                  if (!tocheck)
-                        outputBuilder.Append(" ");
+                    if (!check) outputBuilder.Append(' ');
                     ProcessExpression(op.ReturnExpression.Token, op.ReturnExpression, outputBuilder, true);
                     outputBuilder.AppendLine(";\n\n");
                     break;
@@ -1102,69 +1183,31 @@ public static class Program
                 outputBuilder.Append(ProcessTextProperty(((EX_VariableBase) expression).Variable));
                 break;
 
-            case EExprToken.EX_ByteConst:
-            case EExprToken.EX_IntConstByte:
-                outputBuilder.Append($"0x{((KismetExpression<byte>) expression).Value.ToString("X")}");
-                break;
-            case EExprToken.EX_SoftObjectConst:
-                ProcessExpression(((EX_SoftObjectConst) expression).Value.Token, ((EX_SoftObjectConst) expression).Value, outputBuilder);
-                break;
+            case EExprToken.EX_ByteConst: case EExprToken.EX_IntConstByte: outputBuilder.Append($"0x{((KismetExpression<byte>)expression).Value.ToString("X")}"); break;
+            case EExprToken.EX_SoftObjectConst: ProcessExpression(((EX_SoftObjectConst) expression).Value.Token, ((EX_SoftObjectConst) expression).Value, outputBuilder); break;
             case EExprToken.EX_DoubleConst:
-                outputBuilder.Append(((EX_DoubleConst) expression).Value == (int) ((EX_DoubleConst) expression).Value ? (int) ((EX_DoubleConst) expression).Value : ((EX_DoubleConst) expression).Value.ToString("R"));
+            {
+                double value = ((EX_DoubleConst)expression).Value;
+                outputBuilder.Append(Math.Abs(value - Math.Floor(value)) < 1e-10 ? (int)value : value.ToString("R"));
                 break;
-            case EExprToken.EX_NameConst:
-                outputBuilder.Append($"\"{((EX_NameConst) expression).Value}\"");
-                break;
-            case EExprToken.EX_IntConst:
-                outputBuilder.Append(((EX_IntConst) expression).Value.ToString());
-                break;
-            case EExprToken.EX_PropertyConst:
-                outputBuilder.Append(ProcessTextProperty(((EX_PropertyConst) expression).Property));
-                break;
-            case EExprToken.EX_StringConst:
-                outputBuilder.Append($"\"{((EX_StringConst) expression).Value}\"");
-                break;
-            case EExprToken.EX_Int64Const:
-                outputBuilder.Append(((EX_Int64Const) expression).Value.ToString());
-                break;
-            case EExprToken.EX_UInt64Const:
-                outputBuilder.Append(((EX_UInt64Const) expression).Value.ToString());
-                break;
-            case EExprToken.EX_SkipOffsetConst:
-                outputBuilder.Append(((EX_SkipOffsetConst) expression).Value.ToString());
-                break;
-            case EExprToken.EX_FloatConst:
-                outputBuilder.Append(((EX_FloatConst) expression).Value.ToString());
-                break;
-            case EExprToken.EX_BitFieldConst:
-                outputBuilder.Append(((EX_BitFieldConst) expression).ConstValue);
-                break;
-            case EExprToken.EX_UnicodeStringConst:
-                outputBuilder.Append(((EX_UnicodeStringConst) expression).Value);
-                break;
-            case EExprToken.EX_EndOfScript:
-            case EExprToken.EX_EndParmValue:
-                outputBuilder.Append("\t}\n");
-                break;
-            case EExprToken.EX_NoObject:
-            case EExprToken.EX_NoInterface:
-                outputBuilder.Append("nullptr");
-                break;
-            case EExprToken.EX_IntOne:
-                outputBuilder.Append(1);
-                break;
-            case EExprToken.EX_IntZero:
-                outputBuilder.Append(0);
-                break;
-            case EExprToken.EX_True:
-                outputBuilder.Append("true");
-                break;
-            case EExprToken.EX_False:
-                outputBuilder.Append("false");
-                break;
-            case EExprToken.EX_Self:
-                outputBuilder.Append("this");
-                break;
+            }
+            case EExprToken.EX_NameConst: outputBuilder.Append($"\"{((EX_NameConst)expression).Value}\""); break;
+            case EExprToken.EX_IntConst: outputBuilder.Append(((EX_IntConst)expression).Value.ToString()); break;
+            case EExprToken.EX_PropertyConst: outputBuilder.Append(ProcessTextProperty(((EX_PropertyConst)expression).Property)); break;
+            case EExprToken.EX_StringConst: outputBuilder.Append($"\"{((EX_StringConst)expression).Value}\""); break;
+            case EExprToken.EX_Int64Const: outputBuilder.Append(((EX_Int64Const)expression).Value.ToString()); break;
+            case EExprToken.EX_UInt64Const: outputBuilder.Append(((EX_UInt64Const)expression).Value.ToString()); break;
+            case EExprToken.EX_SkipOffsetConst: outputBuilder.Append(((EX_SkipOffsetConst)expression).Value.ToString()); break;
+            case EExprToken.EX_FloatConst: outputBuilder.Append(((EX_FloatConst)expression).Value.ToString(CultureInfo.GetCultureInfo("en-US"))); break;
+            case EExprToken.EX_BitFieldConst: outputBuilder.Append(((EX_BitFieldConst)expression).ConstValue); break;
+            case EExprToken.EX_UnicodeStringConst: outputBuilder.Append(((EX_UnicodeStringConst)expression).Value); break;
+            case EExprToken.EX_EndOfScript: case EExprToken.EX_EndParmValue: outputBuilder.Append("\t}\n"); break;
+            case EExprToken.EX_NoObject: case EExprToken.EX_NoInterface: outputBuilder.Append("nullptr"); break;
+            case EExprToken.EX_IntOne: outputBuilder.Append(1); break;
+            case EExprToken.EX_IntZero: outputBuilder.Append(0); break;
+            case EExprToken.EX_True: outputBuilder.Append("true"); break;
+            case EExprToken.EX_False: outputBuilder.Append("false"); break;
+            case EExprToken.EX_Self: outputBuilder.Append("this"); break;
 
             case EExprToken.EX_Nothing:
             case EExprToken.EX_NothingInt32:
