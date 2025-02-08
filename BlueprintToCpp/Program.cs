@@ -51,7 +51,7 @@ public static class Program
         try
         {
 #if DEBUG
-                Log.Logger = new LoggerConfiguration().WriteTo.Console(theme: AnsiConsoleTheme.Literate).CreateLogger();
+                //Log.Logger = new LoggerConfiguration().WriteTo.Console(theme: AnsiConsoleTheme.Literate).CreateLogger();
 #endif
             var config = Utils.LoadConfig("config.json");
 
@@ -132,7 +132,7 @@ public static class Program
                     try {
                         if (!package.IsUE4Package) return;
                     index++;
-                    Console.WriteLine($"Processing {package.Path} ({index + 1}/{totalGameFiles})");
+                    Console.WriteLine($"Processing {package.Path} ({index}/{totalGameFiles})");
                     var pkg = provider.LoadPackage(package);
 
                     for (var i = 0; i < pkg.ExportMapLength; i++)
@@ -145,6 +145,7 @@ public static class Program
                         switch (dummy)
                         {
                             case UBlueprintGeneratedClass _:
+                            case UVerseClass _:
                             {
                                 var outputBuilder = new StringBuilder();
 
@@ -159,8 +160,7 @@ public static class Program
                                 if (blueprintGeneratedClass != null || _isVerse)
                                 {
                                     var mainClass = blueprintGeneratedClass?.Name ?? verseClass?.Name;
-                                    var superStructName = blueprintGeneratedClass?.SuperStruct.Name ??
-                                                          verseClass?.SuperStruct.Name;
+                                    var superStructName = blueprintGeneratedClass?.SuperStruct?.Name ?? verseClass?.SuperStruct?.Name ?? "";
                                     outputBuilder.AppendLine(
                                         $"class {Utils.GetPrefix(blueprintGeneratedClass?.GetType().Name ?? verseClass?.GetType().Name)}{mainClass} : public {Utils.GetPrefix(blueprintGeneratedClass?.GetType().Name ?? verseClass?.GetType().Name)}{superStructName}\n{{\npublic:");
 
@@ -246,16 +246,20 @@ public static class Program
                                                                         {
                                                                             tagDataFormatted = $"\"{name.Value.Text}\"";
                                                                         }
-                                                                        else if (tag.Tag is ObjectProperty objectproperty)
+                                                                        else if (tag.Tag is ObjectProperty
+                                                                         objectproperty)
                                                                         {
-                                                                            tagDataFormatted = $"\"{objectproperty.Value}\"";
+                                                                            tagDataFormatted =
+                                                                                $"\"{objectproperty.Value}\"";
                                                                         }
                                                                         else
                                                                         {
-                                                                            tagDataFormatted = $"\"{tag.Tag.GenericValue}\"";
+                                                                            tagDataFormatted =
+                                                                                $"\"{tag.Tag.GenericValue}\"";
                                                                         }
 
-                                                                        return $"\t\t{{ \"{tag.Name}\": {tagDataFormatted} }}";
+                                                                        return
+                                                                            $"\t\t{{ \"{tag.Name}\": {tagDataFormatted} }}";
                                                                     })) + "\n\t]";
                                                             }
                                                             else
@@ -280,14 +284,16 @@ public static class Program
                                                             else if (tags.Any())
                                                             {
                                                                 ShouldAppend($"\"{tags.First().TagName}\"");
-                                                            } else
+                                                            }
+                                                            else
                                                             {
                                                                 ShouldAppend("[]");
                                                             }
                                                         }
                                                         else if (structTag.StructType is FLinearColor color)
                                                         {
-                                                            ShouldAppend($"FLinearColor({color.R}, {color.G}, {color.B}, {color.A})");
+                                                            ShouldAppend(
+                                                                $"FLinearColor({color.R}, {color.G}, {color.B}, {color.A})");
                                                         }
                                                         else
                                                         {
@@ -364,7 +370,7 @@ public static class Program
                                                                                         $"\"{text.Value.Text}\"";
                                                                                 }
                                                                                 else if (tag.Tag is NameProperty
-                                                                                     name)
+                                                                                 name)
                                                                                 {
                                                                                     tagDataFormatted =
                                                                                         $"\"{name.Value.Text}\"";
@@ -435,15 +441,19 @@ public static class Program
                                         }
                                     }
 
-                                    var childProperties = blueprintGeneratedClass?.ChildProperties ?? verseClass?.ChildProperties;
-                                    foreach (FProperty property in childProperties)
+                                    var childProperties = blueprintGeneratedClass?.ChildProperties ??
+                                                          verseClass?.ChildProperties;
+                                    if (childProperties != null)
                                     {
-                                        if (!stringsarray.Contains(property.Name.PlainText))
-                                            outputBuilder.AppendLine(
-                                                $"\t{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || Utils.GetPropertyProperty(property) ? "*" : string.Empty)} {property.Name.PlainText.Replace(" ", "")} = {property.Name.PlainText.Replace(" ", "")}placenolder;");
+                                        foreach (FProperty property in childProperties)
+                                        {
+                                            if (!stringsarray.Contains(property.Name.PlainText))
+                                                outputBuilder.AppendLine(
+                                                    $"\t{Utils.GetPrefix(property.GetType().Name)}{Utils.GetPropertyType(property)}{(property.PropertyFlags.HasFlag(EPropertyFlags.InstancedReference) || property.PropertyFlags.HasFlag(EPropertyFlags.ReferenceParm) || Utils.GetPropertyProperty(property) ? "*" : string.Empty)} {property.Name.PlainText.Replace(" ", "")} = {property.Name.PlainText.Replace(" ", "")}placenolder;");
+                                        }
                                     }
 
-                                    var funcMapOrder =
+                                var funcMapOrder =
                                         blueprintGeneratedClass?.FuncMap?.Keys.Select(fname => fname.ToString())
                                             .ToList() ?? verseClass?.FuncMap.Keys.Select(fname => fname.ToString())
                                             .ToList();
@@ -672,6 +682,13 @@ public static class Program
                 {
                     EX_FinalFunction op = (EX_FinalFunction) expression;
                     KismetExpression[] opp = op.Parameters;
+
+                    // ignore this but I use it to Modify bytecode
+                    /*Console.WriteLine(op.StackNode.Index);
+                    if (op.StackNode.Name == "IsShippingBuild")
+                    {
+                        Console.WriteLine("a");
+                    }*/
                     if (isParameter)
                     {
                         outputBuilder.Append($"{op.StackNode.Name.Replace(" ", "")}(");
@@ -842,7 +859,6 @@ public static class Program
                         outputBuilder.Append(' ');
                         ProcessExpression(element.Token, element, outputBuilder);// sometimes the start of an array is a byte not a variable
 
-                        Console.WriteLine(element.Token);
                         if (i < op.Elements.Length - 1)
                         {
                             outputBuilder.Append(element.Token == EExprToken.EX_InstanceVariable ? ": " : ", ");
@@ -979,8 +995,8 @@ public static class Program
                     }
                     outputBuilder.Append(">(\"");
                     var resolvedObject = op?.Value?.ResolvedObject;
-                    var outerString = resolvedObject?.Outer?.ToString()?.Replace("'", "") ?? string.Empty;
-                    var outerClassString = resolvedObject?.Class?.ToString()?.Replace("'", "") ?? string.Empty;
+                    var outerString = resolvedObject?.Outer?.ToString()?.Replace("'", "") ?? "UNKNOWN";
+                    var outerClassString = resolvedObject?.Class?.ToString()?.Replace("'", "") ?? "UNKNOWN";
                     var name = op?.Value?.Name ?? string.Empty;
 
                     outputBuilder.Append(outerString.Replace(outerClassString, "") + "." + name);
