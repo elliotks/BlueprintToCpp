@@ -160,7 +160,7 @@ public static class Program
                                 if (blueprintGeneratedClass != null || _isVerse)
                                 {
                                     var mainClass = blueprintGeneratedClass?.Name ?? verseClass?.Name;
-                                    var superStructName = blueprintGeneratedClass?.SuperStruct?.Name ?? verseClass?.SuperStruct?.Name ?? "";
+                                    var superStructName = blueprintGeneratedClass?.SuperStruct?.Name ?? verseClass?.SuperStruct?.Name ?? string.Empty;
                                     outputBuilder.AppendLine(
                                         $"class {Utils.GetPrefix(blueprintGeneratedClass?.GetType().Name ?? verseClass?.GetType().Name)}{mainClass} : public {Utils.GetPrefix(blueprintGeneratedClass?.GetType().Name ?? verseClass?.GetType().Name)}{superStructName}\n{{\npublic:");
 
