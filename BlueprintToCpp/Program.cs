@@ -105,7 +105,7 @@ public static class Program
                 "https://fortnitecentral.genxgames.gg/api/v1/aes"); // allow users to change the aes url?
 
             var files = new Dictionary<string, CUE4Parse.FileProvider.Objects.GameFile[]>();
-
+            /*
             if (string.IsNullOrEmpty(blueprintPath) || blueprintPath.Length < 1)
             {
                 files = provider.Files.Values
@@ -118,6 +118,37 @@ public static class Program
                 {
                     files[blueprintPath] = new[] { provider.Files[blueprintPath] };
                 }
+            }
+            */
+            if (!string.IsNullOrEmpty(blueprintPath))
+            {
+                if (blueprintPath.EndsWith(".uasset", StringComparison.OrdinalIgnoreCase))
+                {
+                    // If blueprintPath specifies a .uasset file
+                    if (provider.Files.ContainsKey(blueprintPath))
+                    {
+                        files[blueprintPath] = new[] { provider.Files[blueprintPath] };
+                    }
+                    else
+                    {
+                        Console.WriteLine($"The specified .uasset file '{blueprintPath}' was not found.");
+                    }
+                }
+                else
+                {
+                    // If blueprintPath specifies a directory instead
+                    files = provider.Files.Values
+                        .Where(file => file.Path.StartsWith(blueprintPath, StringComparison.OrdinalIgnoreCase))
+                        .GroupBy(it => it.Path.SubstringBeforeLast('/'))
+                        .ToDictionary(g => g.Key, g => g.ToArray());
+                }
+            }
+            else
+            {
+                // If blueprintPath is null or empty
+                files = provider.Files.Values
+                    .GroupBy(it => it.Path.SubstringBeforeLast('/'))
+                    .ToDictionary(g => g.Key, g => g.ToArray());
             }
 
             int index = -1;
